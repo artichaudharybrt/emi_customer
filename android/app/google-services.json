@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "1083503206602",
+    "project_id": "brtcrm-76c78",
+    "storage_bucket": "brtcrm-76c78.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1083503206602:android:c267b86b6e0eb1109cd433",
+        "android_client_info": {
+          "package_name": "com.rohit.emilockercustomer"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCjAQBCd_BqKyNNz7jwyGw2ZOMJxzRXl34"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1083503206602:android:d5d030cf7860ea699cd433",
+        "android_client_info": {
+          "package_name": "com.rohit.emilockernew"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCjAQBCd_BqKyNNz7jwyGw2ZOMJxzRXl34"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
