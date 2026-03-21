@@ -3,6 +3,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'overlay_lock_service.dart';
+import 'user_location_service.dart';
+import 'sim_details_service.dart';
 
 // Global instance for background handler
 final FlutterLocalNotificationsPlugin _backgroundNotifications = FlutterLocalNotificationsPlugin();
@@ -62,30 +65,62 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     
     switch (type) {
       case 'lock_command':
-        // Store lock command
+        // Extract message and amount
+        final message = data['message'] as String? ?? 
+                       data['reason'] as String? ?? 
+                       'Your EMI is overdue. Please contact shopkeeper.';
+        final amount = data['amount'] as String? ?? 
+                      data['overdueAmount']?.toString() ?? 
+                      '0';
+        
+        debugPrint('[FCM] ========== LOCK COMMAND RECEIVED IN BACKGROUND ==========');
+        debugPrint('[FCM] App may be closed - will save lock status and show notification');
+        
+        // CRITICAL: Save lock status in Flutter SharedPreferences first
+        // This ensures app will show overlay when it opens
+        await prefs.setBool('device_locked', true);
+        await prefs.setBool('overlay_lock_status', true);
+        await prefs.setString('overlay_message', message);
+        await prefs.setString('overlay_amount', amount);
         await prefs.setBool('fcm_lock_pending', true);
         if (data.containsKey('emiId')) {
           await prefs.setString('fcm_lock_emi_id', data['emiId'] as String);
+          await prefs.setString('lock_emi_id', data['emiId'] as String);
         }
-        // Store full command data
         await prefs.setString('fcm_lock_data', jsonEncode(data));
-        debugPrint('[FCM] Lock command stored for processing when app opens');
+        debugPrint('[FCM] ✅ Lock status saved in SharedPreferences');
+        
+        // NOTE: OverlayLockService.lockDevice() uses MethodChannel which won't work in background handler
+        // So we'll rely on app opening and SystemOverlayService.initialize() to show overlay
+        // Try to call lockDevice anyway (may fail silently but that's OK)
+        try {
+          await OverlayLockService.lockDevice(
+            message: message,
+            amount: amount,
+          );
+        } catch (e) {
+          debugPrint('[FCM] ⚠️ Could not call lockDevice in background (expected): $e');
+          debugPrint('[FCM] Overlay will show when app opens');
+        }
         
         // Show high-priority notification that auto-opens app
-        await _showAutoOpenNotification(message, data);
+        // This notification will automatically open the app via fullScreenIntent
+        await _showAutoOpenNotificationFromData(data, message);
+        debugPrint('[FCM] ✅ Lock command processed - notification shown (app will open automatically)');
         break;
         
       case 'unlock_command':
       case 'extend_payment':
-        // Store unlock command with HIGHEST PRIORITY
+        // Unlock device immediately using overlay lock service
         debugPrint('[FCM] ========== UNLOCK COMMAND RECEIVED IN BACKGROUND ==========');
+        await OverlayLockService.unlockDevice();
+        
+        // Store unlock command
         await prefs.setBool('fcm_unlock_pending', true);
         
-        // Clear all lock-related flags immediately
+        // Clear all lock-related flags
         await prefs.setBool('device_locked', false);
-        await prefs.setBool('overlay_active', false);
         await prefs.remove('lock_emi_id');
-        await prefs.remove('overlay_emi_id');
         await prefs.remove('fcm_lock_emi_id');
         await prefs.remove('fcm_lock_data');
         
@@ -96,12 +131,30 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
             await prefs.setString('fcm_unlock_until', unlockUntil.toIso8601String());
           }
         } else {
-          // For unlock_command, remove unlock_until
           await prefs.remove('fcm_unlock_until');
         }
         
-        debugPrint('[FCM] ✅ Unlock command stored - all lock flags cleared');
-        debugPrint('[FCM] App will hide overlay when it opens');
+        debugPrint('[FCM] ✅ Unlock command processed - overlay should be hidden');
+        break;
+
+      case 'get_location_command':
+        debugPrint('[FCM] ========== GET LOCATION COMMAND IN BACKGROUND ==========');
+        try {
+          final sent = await UserLocationService.fetchAndSendLocation();
+          debugPrint('[FCM] get_location_command (background) result: ${sent ? "OK" : "failed"}');
+        } catch (e) {
+          debugPrint('[FCM] get_location_command (background) error: $e');
+        }
+        break;
+
+      case 'get_sim_details_command':
+        debugPrint('[FCM] ========== GET SIM DETAILS COMMAND IN BACKGROUND ==========');
+        try {
+          final sent = await SimDetailsService.postSimDetailsIfAllowed();
+          debugPrint('[FCM] get_sim_details_command (background) result: ${sent ? "OK" : "failed"}');
+        } catch (e) {
+          debugPrint('[FCM] get_sim_details_command (background) error: $e');
+        }
         break;
         
       default:
@@ -110,7 +163,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   }
 }
 
-/// Show notification that auto-opens app
+/// Show notification that auto-opens app (from RemoteMessage)
 @pragma('vm:entry-point')
 Future<void> _showAutoOpenNotification(RemoteMessage message, Map<String, dynamic> data) async {
   try {
@@ -118,6 +171,30 @@ Future<void> _showAutoOpenNotification(RemoteMessage message, Map<String, dynami
     final body = message.notification?.body ?? 
                  data['reason'] as String? ?? 
                  'Your device needs to be locked due to overdue EMI';
+    
+    await _showNotification(title, body, data);
+  } catch (e) {
+    debugPrint('[FCM] ❌ Error showing auto-open notification: $e');
+  }
+}
+
+/// Show notification that auto-opens app (from data only - for background handler)
+@pragma('vm:entry-point')
+Future<void> _showAutoOpenNotificationFromData(Map<String, dynamic> data, String lockMessage) async {
+  try {
+    final title = 'Device Lock Required';
+    final body = lockMessage;
+    
+    await _showNotification(title, body, data);
+  } catch (e) {
+    debugPrint('[FCM] ❌ Error showing auto-open notification: $e');
+  }
+}
+
+/// Show notification helper
+@pragma('vm:entry-point')
+Future<void> _showNotification(String title, String body, Map<String, dynamic> data) async {
+  try {
     
     debugPrint('[FCM] Showing auto-open notification: $title');
     

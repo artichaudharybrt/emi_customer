@@ -7,11 +7,25 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+    <!-- CRITICAL: Foreground service permission for Android 9+ -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+    <!-- Call blocking permissions -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
+    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS"/>
+    <uses-permission android:name="android.permission.CALL_PHONE"/>
+    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS"/>
+    <uses-permission android:name="android.permission.READ_CALL_LOG"/>
+    <!-- Location for FCM get_location_command -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <!-- Note: MODIFY_PHONE_STATE requires system app, but we'll use alternative methods -->
     
     <application
-        android:label="SafeEMI"
+        android:label="Fasst Pay"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:enableOnBackInvokedCallback="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -22,7 +36,8 @@
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize"
             android:showWhenLocked="true"
-            android:turnScreenOn="true">
+            android:turnScreenOn="true"
+            android:enableOnBackInvokedCallback="true">
             <!-- Specifies an Android theme to apply to this Activity as soon as
                  the Android process has started. This theme is visible to the user
                  while the Flutter UI initializes. After that, this theme continues
@@ -53,7 +68,148 @@
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="device_lock_channel" />
         
-        <!-- Boot receiver for auto-start -->
+        <!-- Custom Firebase Messaging Service - Handles FCM messages in background -->
+        <service
+            android:name=".MyFirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+        
+        <!-- App Usage Monitor Service - Accessibility service to monitor app control attempts -->
+        <service
+            android:name=".AppUsageMonitorService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/accessibility_service_config" />
+        </service>
+        
+        <!-- System Overlay Service - Full-screen overlay that blocks phone usage -->
+        <!-- CRITICAL: Service runs independently of app - won't be killed if app crashes -->
+        <service
+            android:name=".SystemOverlayService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            android:stopWithTask="false" />
+        
+        <!-- Call Blocking Service - Blocks incoming calls when device is locked -->
+        <service
+            android:name=".CallBlockingService"
+            android:enabled="true"
+            android:exported="false"
+            android:stopWithTask="false" />
+        
+        <!-- FCM Command Receiver - Receives broadcast from Flutter background handler -->
+        <receiver
+            android:name=".FcmCommandReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.rohit.emilockercustomer.ACTION_LOCK_COMMAND" />
+                <action android:name="com.rohit.emilockercustomer.ACTION_UNLOCK_COMMAND" />
+            </intent-filter>
+        </receiver>
+        
+        <!-- Boot receiver for auto-start overlay on boot -->
+        <!-- CRITICAL: This receiver must be enabled and exported to receive boot events -->
+        <!-- IMPORTANT: App must be opened at least once after installation for BOOT_COMPLETED to work -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:directBootAware="true">
+            <!-- Main boot completed action - SEPARATE intent-filter for each action -->
+            <!-- CRITICAL: Remove category - BOOT_COMPLETED doesn't need category -->
+            <intent-filter android:priority="1000">
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+            </intent-filter>
+            <!-- Package replaced actions -->
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.PACKAGE_REPLACED"/>
+                <data android:scheme="package"/>
+            </intent-filter>
+            <!-- Vendor-specific boot actions (Xiaomi, HTC, etc.) -->
+            <intent-filter>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
+        
+        <!-- Device Admin Receiver - Prevents app uninstallation during EMI period -->
+        <!-- Legal compliance: User must agree to terms before device admin is activated -->
+        <receiver
+            android:name=".AppDeviceAdminReceiver"
+            android:permission="android.permission.BIND_DEVICE_ADMIN"
+            android:exported="true">
+            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin_receiver" />
+            <intent-filter>
+                <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
+                <action android:name="android.app.action.DEVICE_ADMIN_DISABLE_REQUESTED" />
+                <action android:name="android.app.action.DEVICE_ADMIN_DISABLED" />
+            </intent-filter>
+        </receiver>
+        
+        <!-- User Present Receiver - Opens blocking activity when screen unlocks -->
+        <receiver
+            android:name=".UserPresentReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.USER_PRESENT" />
+            </intent-filter>
+        </receiver>
+        
+        <!-- SIM change receiver - when user changes SIM, post new SIM details to API in background -->
+        <receiver
+            android:name=".SimChangeReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.SIM_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+        
+        <!-- Overlay Permission Blocking Activity - Shown when overlay permission is OFF -->
+        <activity
+            android:name=".OverlayPermissionBlockingActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:finishOnTaskLaunch="false"
+            android:noHistory="false"
+            android:stateNotNeeded="true"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+        
+        <!-- Device Admin Blocking Activity - Shown when device is locked via Device Admin -->
+        <activity
+            android:name=".DeviceAdminBlockingActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:theme="@android:style/Theme.NoTitleBar.Fullscreen" />
+        
+        <!-- Keep notification boot receiver for notifications -->
         <receiver
             android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
             android:enabled="true"

@@ -1,14 +1,12 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../utils/responsive.dart';
 import '../../services/emi_service.dart';
-import '../../services/payment_service.dart';
-import '../../services/auth_service.dart';
-import '../../services/app_overlay_service.dart';
 import '../../utils/pdf_service.dart';
 import '../../models/payment_models.dart';
-import 'package:razorpay_flutter/razorpay_flutter.dart';
+import 'razorpay_payment_screen.dart';
 
 class BrowseProductsScreen extends StatefulWidget {
   final Map<String, dynamic>? emiDetails;
@@ -21,37 +19,7 @@ class BrowseProductsScreen extends StatefulWidget {
 
 class _BrowseProductsScreenState extends State<BrowseProductsScreen> {
   final EmiService _emiService = EmiService();
-  final PaymentService _paymentService = PaymentService();
-  final AuthService _authService = AuthService();
   bool _isDownloading = false;
-  
-  // Razorpay configuration
-  // IMPORTANT: This key MUST match the key used in backend to create orders
-  static const String _razorpayKeyId = 'rzp_test_RcPWCIhSFzHMjj';
-  late Razorpay _razorpay;
-  bool _isProcessingPayment = false;
-  String? _currentEmiPaymentId; // Store current payment ID for verification
-
-  @override
-  void initState() {
-    super.initState();
-    print('[RAZORPAY_GATEWAY] Initializing Razorpay with key: $_razorpayKeyId');
-    try {
-      _razorpay = Razorpay();
-      _razorpay.on(Razorpay.EVENT_PAYMENT_SUCCESS, _handlePaymentSuccess);
-      _razorpay.on(Razorpay.EVENT_PAYMENT_ERROR, _handlePaymentError);
-      _razorpay.on(Razorpay.EVENT_EXTERNAL_WALLET, _handleExternalWallet);
-      print('[RAZORPAY_GATEWAY] Razorpay initialized successfully');
-    } catch (e) {
-      print('[RAZORPAY_GATEWAY] ERROR: Failed to initialize Razorpay - $e');
-    }
-  }
-
-  @override
-  void dispose() {
-    _razorpay.clear();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -64,7 +32,7 @@ class _BrowseProductsScreenState extends State<BrowseProductsScreen> {
         title: Text(
           "Browse Products",
           style: GoogleFonts.poppins(
-            fontSize: Responsive.fontSize(context, mobile: 18, tablet: 20, desktop: 22),
+            fontSize: 20,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -116,19 +84,14 @@ class _BrowseProductsScreenState extends State<BrowseProductsScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'PDF saved successfully!',
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: Responsive.fontSize(context, mobile: 14, tablet: 15, desktop: 16),
-                  ),
+                  style: TextStyle(fontWeight: FontWeight.bold),
                 ),
-                SizedBox(height: Responsive.spacing(context, mobile: 4, tablet: 5, desktop: 6)),
+                const SizedBox(height: 4),
                 Text(
                   'Saved to: $savePath',
-                  style: TextStyle(
-                    fontSize: Responsive.fontSize(context, mobile: 12, tablet: 13, desktop: 14),
-                  ),
+                  style: const TextStyle(fontSize: 12),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -166,16 +129,21 @@ class _BrowseProductsScreenState extends State<BrowseProductsScreen> {
     final d = widget.emiDetails!;
 
     return Scaffold(
-      backgroundColor: Colors.grey.shade100,
+      backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
         title: Text(
           d["product"],
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
+          style: GoogleFonts.poppins(
+            fontWeight: FontWeight.w700,
             fontSize: Responsive.fontSize(context, mobile: 18, tablet: 20, desktop: 22),
           ),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
         ),
         elevation: 0,
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.grey.shade900,
+        centerTitle: false,
       ),
 
       body: ResponsivePage(
@@ -190,88 +158,211 @@ class _BrowseProductsScreenState extends State<BrowseProductsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
 
-            // PRODUCT CARD
+            // PRODUCT CARD with enhanced styling
             Container(
               padding: Responsive.padding(
                 context,
-                mobile: const EdgeInsets.all(15),
-                tablet: const EdgeInsets.all(24),
-                desktop: const EdgeInsets.all(28),
+                mobile: const EdgeInsets.all(22),
+                tablet: const EdgeInsets.all(30),
+                desktop: const EdgeInsets.all(36),
               ),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(
-                  Responsive.spacing(context, mobile: 18, tablet: 20, desktop: 24),
+                  Responsive.spacing(context, mobile: 24, tablet: 28, desktop: 32),
                 ),
                 boxShadow: [
                   BoxShadow(
+                    blurRadius: 24,
+                    spreadRadius: 0,
+                    offset: const Offset(0, 6),
+                    color: Colors.black.withOpacity(0.1),
+                  ),
+                  BoxShadow(
                     blurRadius: 12,
-                    spreadRadius: 2,
-                    color: Colors.black12.withOpacity(0.05),
+                    spreadRadius: 0,
+                    offset: const Offset(0, 3),
+                    color: Colors.black.withOpacity(0.06),
                   ),
                 ],
               ),
               child: Column(
                 children: [
-                  Center(
-                    child: Image.asset(
-                      d["image"],
-                      height: Responsive.spacing(context, mobile: 170, tablet: 200, desktop: 240),
-                      fit: BoxFit.contain,
+                  Container(
+                    padding: EdgeInsets.all(
+                      Responsive.spacing(context, mobile: 18, tablet: 22, desktop: 26),
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.grey.shade50,
+                          Colors.grey.shade100,
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(
+                        Responsive.spacing(context, mobile: 18, tablet: 20, desktop: 22),
+                      ),
+                      border: Border.all(
+                        color: Colors.grey.shade200,
+                        width: 1,
+                      ),
+                    ),
+                    child: Center(
+                      child: d["image"] != null && d["image"].toString().isNotEmpty
+                          ? Image.asset(
+                              d["image"],
+                              height: Responsive.spacing(context, mobile: 180, tablet: 220, desktop: 260),
+                              fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Text(
+                                  d["product"],
+                                  style: GoogleFonts.poppins(
+                                    fontSize: Responsive.fontSize(context, mobile: 20, tablet: 24, desktop: 28),
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.grey.shade900,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 2,
+                                );
+                              },
+                            )
+                          : Text(
+                              d["product"],
+                              style: GoogleFonts.poppins(
+                                fontSize: Responsive.fontSize(context, mobile: 20, tablet: 24, desktop: 28),
+                                fontWeight: FontWeight.w700,
+                                color: Colors.grey.shade900,
+                              ),
+                              textAlign: TextAlign.center,
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 2,
+                            ),
                     ),
                   ),
 
-                  SizedBox(height: Responsive.spacing(context, mobile: 16, tablet: 20, desktop: 24)),
 
-                  Text(
-                    d["product"],
-                    style: GoogleFonts.poppins(
-                      fontSize: Responsive.fontSize(context, mobile: 22, tablet: 24, desktop: 28),
-                      fontWeight: FontWeight.w600,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
 
-                  SizedBox(height: Responsive.spacing(context, mobile: 6, tablet: 8, desktop: 10)),
+                  SizedBox(height: Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
 
                   Container(
                     padding: EdgeInsets.symmetric(
-                      horizontal: Responsive.spacing(context, mobile: 14, tablet: 16, desktop: 18),
-                      vertical: Responsive.spacing(context, mobile: 6, tablet: 7, desktop: 8),
+                      horizontal: Responsive.spacing(context, mobile: 20, tablet: 24, desktop: 28),
+                      vertical: Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16),
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
+                      gradient: LinearGradient(
+                        colors: d["status"] == "active"
+                            ? [Colors.blue.shade500, Colors.blue.shade700]
+                            : [Colors.green.shade500, Colors.green.shade700],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
                       borderRadius: BorderRadius.circular(
-                        Responsive.spacing(context, mobile: 8, tablet: 10, desktop: 12),
+                        Responsive.spacing(context, mobile: 14, tablet: 16, desktop: 18),
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: (d["status"] == "active" ? Colors.blue : Colors.green).withOpacity(0.4),
+                          blurRadius: 12,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
                     ),
-                    child: Text(
-                      d["status"].toUpperCase(),
-                      style: TextStyle(
-                        color: d["status"] == "active"
-                            ? Colors.blue
-                            : Colors.green,
-                        fontWeight: FontWeight.w600,
-                        fontSize: Responsive.fontSize(context, mobile: 12, tablet: 13, desktop: 14),
-                      ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: Responsive.spacing(context, mobile: 8, tablet: 10, desktop: 12),
+                          height: Responsive.spacing(context, mobile: 8, tablet: 10, desktop: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        SizedBox(width: Responsive.spacing(context, mobile: 8, tablet: 10, desktop: 12)),
+                        Flexible(
+                          child: Text(
+                            d["status"].toUpperCase(),
+                            style: GoogleFonts.poppins(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: Responsive.fontSize(context, mobile: 14, tablet: 15, desktop: 16),
+                              letterSpacing: 1.5,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
             ),
 
-            SizedBox(height: Responsive.spacing(context, mobile: 25, tablet: 30, desktop: 35)),
+            SizedBox(height: Responsive.spacing(context, mobile: 28, tablet: 32, desktop: 40)),
 
-            // DETAILS
-            Text(
-              "EMI Details",
-              style: GoogleFonts.poppins(
-                fontSize: Responsive.fontSize(context, mobile: 20, tablet: 22, desktop: 24),
-                fontWeight: FontWeight.w600,
-              ),
+            // DETAILS Section Header
+            Row(
+              children: [
+                Container(
+                  width: Responsive.spacing(context, mobile: 5, tablet: 6, desktop: 7),
+                  height: Responsive.spacing(context, mobile: 28, tablet: 32, desktop: 36),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Colors.blue.shade500, Colors.blue.shade700],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                    borderRadius: BorderRadius.circular(
+                      Responsive.spacing(context, mobile: 3, tablet: 3.5, desktop: 4),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.blue.withOpacity(0.3),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(width: Responsive.spacing(context, mobile: 14, tablet: 16, desktop: 18)),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "EMI Details",
+                        style: GoogleFonts.poppins(
+                          fontSize: Responsive.fontSize(context, mobile: 24, tablet: 26, desktop: 30),
+                          fontWeight: FontWeight.w700,
+                          color: Colors.grey.shade900,
+                          letterSpacing: 0.5,
+                        ),
+                      ),
+                      SizedBox(height: Responsive.spacing(context, mobile: 2, tablet: 3, desktop: 4)),
+                      Container(
+                        width: Responsive.spacing(context, mobile: 40, tablet: 50, desktop: 60),
+                        height: Responsive.spacing(context, mobile: 3, tablet: 4, desktop: 5),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Colors.blue.shade400, Colors.blue.shade600],
+                          ),
+                          borderRadius: BorderRadius.circular(
+                            Responsive.spacing(context, mobile: 2, tablet: 2.5, desktop: 3),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
 
-            SizedBox(height: Responsive.spacing(context, mobile: 12, tablet: 16, desktop: 20)),
+            SizedBox(height: Responsive.spacing(context, mobile: 16, tablet: 20, desktop: 24)),
 
             _detailCard(context, "Monthly EMI", "₹${d["amount"]}", Icons.currency_rupee),
             _detailCard(
@@ -282,43 +373,100 @@ class _BrowseProductsScreenState extends State<BrowseProductsScreen> {
               onTap: () => _showInstallmentsDialog(context),
             ),
             _detailCard(context, "Paid Months", d["paid"].toString(), Icons.check_circle),
-            _detailCard(context, "Due in", d["dueDay"].toString(), Icons.check_circle),
+            _detailCard(context, "Due in", "${d["dueDay"]} days", Icons.access_time),
             _detailCard(context, "Status", d["status"].toUpperCase(), Icons.info_outline),
 
-            SizedBox(height: Responsive.spacing(context, mobile: 30, tablet: 35, desktop: 40)),
+            SizedBox(height: Responsive.spacing(context, mobile: 32, tablet: 40, desktop: 48)),
 
-            // BUTTON
-            ElevatedButton(
-              onPressed: _isDownloading ? null : _downloadStatement,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                disabledBackgroundColor: Colors.grey,
-                minimumSize: Size(
-                  double.infinity,
-                  Responsive.spacing(context, mobile: 55, tablet: 60, desktop: 65),
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(
-                    Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16),
-                  ),
-                ),
+            // BUTTON with enhanced styling - Fully Responsive
+            Container(
+              width: double.infinity,
+              constraints: BoxConstraints(
+                maxWidth: double.infinity,
+                minHeight: Responsive.spacing(context, mobile: 56, tablet: 64, desktop: 72),
               ),
-                  child: _isDownloading
-                  ? SizedBox(
-                      height: Responsive.spacing(context, mobile: 20, tablet: 22, desktop: 24),
-                      width: Responsive.spacing(context, mobile: 20, tablet: 22, desktop: 24),
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                      ),
-                    )
-                  : Text(
-                      "Download Statement",
-                      style: TextStyle(
-                        fontSize: Responsive.fontSize(context, mobile: 16, tablet: 18, desktop: 20),
-                        color: Colors.white,
-                      ),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(
+                  Responsive.spacing(context, mobile: 16, tablet: 18, desktop: 20),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.blue.withOpacity(0.4),
+                    blurRadius: 16,
+                    offset: const Offset(0, 8),
+                    spreadRadius: 0,
+                  ),
+                ],
+              ),
+              child: ElevatedButton(
+                onPressed: _isDownloading ? null : _downloadStatement,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue.shade600,
+                  disabledBackgroundColor: Colors.grey.shade400,
+                  foregroundColor: Colors.white,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: Responsive.spacing(context, mobile: 16, tablet: 20, desktop: 24),
+                    vertical: Responsive.spacing(context, mobile: 16, tablet: 18, desktop: 20),
+                  ),
+                  minimumSize: Size(
+                    double.infinity,
+                    Responsive.spacing(context, mobile: 56, tablet: 64, desktop: 72),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      Responsive.spacing(context, mobile: 16, tablet: 18, desktop: 20),
                     ),
+                  ),
+                  elevation: 0,
+                ),
+                child: _isDownloading
+                    ? SizedBox(
+                        height: Responsive.spacing(context, mobile: 24, tablet: 28, desktop: 32),
+                        width: Responsive.spacing(context, mobile: 24, tablet: 28, desktop: 32),
+                        child: const CircularProgressIndicator(
+                          strokeWidth: 3.5,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: EdgeInsets.all(
+                                Responsive.spacing(context, mobile: 6, tablet: 8, desktop: 10),
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(
+                                  Responsive.spacing(context, mobile: 6, tablet: 8, desktop: 10),
+                                ),
+                              ),
+                              child: Icon(
+                                Icons.download_rounded,
+                                size: Responsive.spacing(context, mobile: 20, tablet: 22, desktop: 24),
+                              ),
+                            ),
+                            SizedBox(width: Responsive.spacing(context, mobile: 8, tablet: 10, desktop: 12)),
+                            Flexible(
+                              child: Text(
+                                "Download Statement",
+                                style: GoogleFonts.poppins(
+                                  fontSize: Responsive.fontSize(context, mobile: 16, tablet: 18, desktop: 20),
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.5,
+                                ),
+                                textAlign: TextAlign.center,
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+              ),
             ),
           ],
         ),
@@ -327,85 +475,138 @@ class _BrowseProductsScreenState extends State<BrowseProductsScreen> {
     );
   }
 
-  // DETAIL CARD UI
+  // DETAIL CARD UI with enhanced styling
   Widget _detailCard(BuildContext context, String title, String value, IconData icon, {VoidCallback? onTap}) {
     Widget cardContent = Container(
-      margin: EdgeInsets.only(bottom: Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
+      margin: EdgeInsets.only(bottom: Responsive.spacing(context, mobile: 16, tablet: 18, desktop: 20)),
       padding: Responsive.padding(
         context,
-        mobile: const EdgeInsets.all(14),
-        tablet: const EdgeInsets.all(18),
-        desktop: const EdgeInsets.all(22),
+        mobile: const EdgeInsets.all(20),
+        tablet: const EdgeInsets.all(24),
+        desktop: const EdgeInsets.all(28),
       ),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(
-          Responsive.spacing(context, mobile: 14, tablet: 16, desktop: 18),
+          Responsive.spacing(context, mobile: 18, tablet: 20, desktop: 22),
+        ),
+        border: Border.all(
+          color: Colors.grey.shade200,
+          width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            blurRadius: 8,
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+            color: Colors.black.withOpacity(0.06),
+            spreadRadius: 0,
+          ),
+          BoxShadow(
+            blurRadius: 6,
             offset: const Offset(0, 2),
-            color: Colors.black12.withOpacity(0.05),
-          )
+            color: Colors.black.withOpacity(0.04),
+            spreadRadius: 0,
+          ),
         ],
       ),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: Responsive.spacing(context, mobile: 18, tablet: 20, desktop: 24),
-            backgroundColor: Colors.blue.shade50,
+          Container(
+            padding: EdgeInsets.all(
+              Responsive.spacing(context, mobile: 14, tablet: 16, desktop: 18),
+            ),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.blue.shade500, Colors.blue.shade700],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(
+                Responsive.spacing(context, mobile: 14, tablet: 16, desktop: 18),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.blue.withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
             child: Icon(
               icon,
-              color: Colors.blue,
-              size: Responsive.spacing(context, mobile: 20, tablet: 22, desktop: 26),
+              color: Colors.white,
+              size: Responsive.spacing(context, mobile: 24, tablet: 26, desktop: 30),
             ),
           ),
-          SizedBox(width: Responsive.spacing(context, mobile: 14, tablet: 16, desktop: 20)),
+          SizedBox(width: Responsive.spacing(context, mobile: 16, tablet: 20, desktop: 24)),
           Expanded(
-            child: Text(
-              title,
-              style: GoogleFonts.poppins(
-                fontSize: Responsive.fontSize(context, mobile: 15, tablet: 16, desktop: 18),
-                fontWeight: FontWeight.w500,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          Flexible(
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Flexible(
-                  child: Text(
-                    value,
-                    style: GoogleFonts.poppins(
-                      fontSize: Responsive.fontSize(context, mobile: 15, tablet: 16, desktop: 18),
-                      fontWeight: FontWeight.w600,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.end,
+                Text(
+                  title,
+                  style: GoogleFonts.poppins(
+                    fontSize: Responsive.fontSize(context, mobile: 14, tablet: 15, desktop: 16),
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey.shade600,
                   ),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
                 ),
-                if (onTap != null) ...[
-                  SizedBox(width: Responsive.spacing(context, mobile: 6, tablet: 8, desktop: 10)),
-                  Icon(
-                    Icons.arrow_forward_ios,
-                    size: Responsive.spacing(context, mobile: 14, tablet: 16, desktop: 18),
-                    color: Colors.grey,
+                SizedBox(height: Responsive.spacing(context, mobile: 4, tablet: 6, desktop: 8)),
+                Text(
+                  value,
+                  style: GoogleFonts.poppins(
+                    fontSize: Responsive.fontSize(context, mobile: 18, tablet: 20, desktop: 22),
+                    fontWeight: FontWeight.w700,
+                    color: Colors.grey.shade900,
                   ),
-                ],
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 2,
+                ),
               ],
             ),
           ),
+          if (onTap != null)
+            Container(
+              padding: EdgeInsets.all(
+                Responsive.spacing(context, mobile: 10, tablet: 12, desktop: 14),
+              ),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.blue.shade50, Colors.blue.shade100],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(
+                  Responsive.spacing(context, mobile: 10, tablet: 12, desktop: 14),
+                ),
+                border: Border.all(
+                  color: Colors.blue.shade200,
+                  width: 1,
+                ),
+              ),
+              child: Icon(
+                Icons.arrow_forward_ios,
+                size: Responsive.spacing(context, mobile: 18, tablet: 20, desktop: 22),
+                color: Colors.blue.shade700,
+              ),
+            ),
         ],
       ),
     );
 
     if (onTap != null) {
-      return GestureDetector(
-        onTap: onTap,
-        child: cardContent,
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(
+            Responsive.spacing(context, mobile: 16, tablet: 18, desktop: 20),
+          ),
+          child: cardContent,
+        ),
       );
     }
 
@@ -436,26 +637,13 @@ class _BrowseProductsScreenState extends State<BrowseProductsScreen> {
       final installments = response.data
           .where((payment) => payment.emiId.id == emiId)
           .toList()
-        ..sort((a, b) => a.dueDate.compareTo(b.dueDate)); // Sort by due date (nearest first)
-
-      // Find nearest pending installment
-      PendingPaymentModel? nearestPending;
-      for (var installment in installments) {
-        if (installment.status.toLowerCase() == 'pending') {
-          nearestPending = installment;
-          break;
-        }
-      }
+        ..sort((a, b) => a.installmentNumber.compareTo(b.installmentNumber));
 
       // Show installments dialog
       if (!context.mounted) return;
       showDialog(
         context: context,
-        builder: (context) => _InstallmentsDialog(
-          installments: installments,
-          nearestPending: nearestPending,
-          onPayNow: _handlePayNow,
-        ),
+        builder: (context) => _InstallmentsDialog(installments: installments),
       );
     } catch (e) {
       if (!context.mounted) return;
@@ -468,568 +656,13 @@ class _BrowseProductsScreenState extends State<BrowseProductsScreen> {
       );
     }
   }
-
-  Future<void> _handlePayNow(BuildContext context, PendingPaymentModel installment) async {
-    print('[RAZORPAY_GATEWAY] ========== PAYMENT FLOW STARTED ==========');
-    print('[RAZORPAY_GATEWAY] Installment Details:');
-    print('[RAZORPAY_GATEWAY]   - ID: ${installment.id}');
-    print('[RAZORPAY_GATEWAY]   - Installment Number: ${installment.installmentNumber}');
-    print('[RAZORPAY_GATEWAY]   - Amount: ₹${installment.amount}');
-    print('[RAZORPAY_GATEWAY]   - Bill Number: ${installment.emiId.billNumber}');
-    print('[RAZORPAY_GATEWAY]   - Due Date: ${installment.dueDate}');
-    
-    if (_isProcessingPayment) {
-      print('[RAZORPAY_GATEWAY] WARNING: Payment already in progress, ignoring request');
-      return;
-    }
-
-    // Store emiPaymentId for verification after payment success
-    _currentEmiPaymentId = installment.id;
-    print('[RAZORPAY_GATEWAY] Stored emiPaymentId for verification: $_currentEmiPaymentId');
-
-    // Close dialog first
-    Navigator.pop(context);
-
-    setState(() {
-      _isProcessingPayment = true;
-    });
-
-    try {
-      // Show loading indicator
-      if (!context.mounted) return;
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
-
-      // Step 1: Create Razorpay order
-      print('[RAZORPAY_GATEWAY] Step 1: Creating Razorpay order...');
-      final orderResponse = await _paymentService.createRazorpayOrder(installment.id);
-
-      print('[RAZORPAY_GATEWAY] Order response received, checking context...');
-      
-      // Close loading dialog if context is still mounted
-      if (context.mounted) {
-        print('[RAZORPAY_GATEWAY] Context is mounted, closing loading dialog...');
-        Navigator.pop(context); // Close loading dialog
-        print('[RAZORPAY_GATEWAY] Loading dialog closed');
-      } else {
-        print('[RAZORPAY_GATEWAY] WARNING: Context not mounted, but proceeding with payment');
-      }
-
-      print('[RAZORPAY_GATEWAY] Validating order response...');
-      print('[RAZORPAY_GATEWAY]   - Success: ${orderResponse.success}');
-      print('[RAZORPAY_GATEWAY]   - Data null: ${orderResponse.data == null}');
-      
-      if (!orderResponse.success || orderResponse.data == null) {
-        final errorMsg = orderResponse.message.isNotEmpty 
-            ? orderResponse.message 
-            : 'Failed to create payment order';
-        print('[RAZORPAY_GATEWAY] ERROR: Order creation failed - $errorMsg');
-        throw Exception(errorMsg);
-      }
-      
-      print('[RAZORPAY_GATEWAY] Order response validation passed');
-
-      final orderData = orderResponse.data!;
-      // Use amount from order response (already in paise) or convert from installment
-      final amountInPaise = orderData.amount > 0 
-          ? orderData.amount.toInt() 
-          : (installment.amount * 100).toInt();
-      print('[RAZORPAY_GATEWAY] Step 1 SUCCESS: Order created');
-      print('[RAZORPAY_GATEWAY]   - Order ID: ${orderData.orderId}');
-      print('[RAZORPAY_GATEWAY]   - Amount from order (paise): ${orderData.amount}');
-      print('[RAZORPAY_GATEWAY]   - Amount to use (paise): $amountInPaise');
-      print('[RAZORPAY_GATEWAY]   - Currency: ${orderData.currency}');
-
-      // Validate order ID
-      if (orderData.orderId.isEmpty) {
-        print('[RAZORPAY_GATEWAY] ERROR: Order ID is empty, cannot proceed with payment');
-        throw Exception('Invalid order ID received from server');
-      }
-
-      // Step 2: Open Razorpay checkout
-      print('[RAZORPAY_GATEWAY] Step 2: Opening Razorpay checkout...');
-      
-      // CRITICAL: Key used in app MUST match the key used to create order on backend
-      // If backend uses different key, Razorpay will show "Something went wrong" error
-      print('[RAZORPAY_GATEWAY] ⚠️ CRITICAL CHECK: Key Verification');
-      print('[RAZORPAY_GATEWAY]   - App Key: $_razorpayKeyId');
-      print('[RAZORPAY_GATEWAY]   - Backend MUST use SAME key: $_razorpayKeyId');
-      print('[RAZORPAY_GATEWAY]   - If backend uses different key, order validation will FAIL');
-      
-      // Ensure amount matches exactly with order amount
-      // Razorpay requires amount to match the order amount when order_id is provided
-      final orderAmountInPaise = orderData.amount.toInt();
-      print('[RAZORPAY_GATEWAY] Order amount from response: $orderAmountInPaise paise');
-      print('[RAZORPAY_GATEWAY] Calculated amount: $amountInPaise paise');
-      
-      // Use order amount directly to avoid any mismatch
-      final finalAmount = orderAmountInPaise > 0 ? orderAmountInPaise : amountInPaise;
-      
-      // Razorpay requires amount as int, not double
-      final int amountInt = finalAmount;
-      
-      // Verify amount matches order exactly
-      if (amountInt != orderAmountInPaise) {
-        print('[RAZORPAY_GATEWAY] ⚠️ WARNING: Amount mismatch!');
-        print('[RAZORPAY_GATEWAY]   - Order amount: $orderAmountInPaise');
-        print('[RAZORPAY_GATEWAY]   - Options amount: $amountInt');
-      }
-      
-      // Fetch user profile to get mobile and email for prefill
-      print('[RAZORPAY_GATEWAY] Fetching user profile for prefill data...');
-      String userMobile = '';
-      String userEmail = '';
-      
-      try {
-        final userProfileResponse = await _authService.getUserProfile();
-        userMobile = userProfileResponse.data.mobile;
-        userEmail = userProfileResponse.data.email;
-        print('[RAZORPAY_GATEWAY] User profile fetched:');
-        print('[RAZORPAY_GATEWAY]   - Mobile: ${userMobile.isNotEmpty ? userMobile : 'Not available'}');
-        print('[RAZORPAY_GATEWAY]   - Email: ${userEmail.isNotEmpty ? userEmail : 'Not available'}');
-      } catch (e) {
-        print('[RAZORPAY_GATEWAY] WARNING: Could not fetch user profile: $e');
-        print('[RAZORPAY_GATEWAY] Proceeding without prefill data');
-      }
-      
-      // Build prefill map only if we have data
-      final Map<String, String> prefill = {};
-      if (userMobile.isNotEmpty) {
-        // Remove any spaces or special characters, keep only digits
-        final cleanMobile = userMobile.replaceAll(RegExp(r'[^\d]'), '');
-        if (cleanMobile.isNotEmpty && cleanMobile.length >= 10) {
-          prefill['contact'] = cleanMobile;
-          print('[RAZORPAY_GATEWAY] Added mobile to prefill: $cleanMobile');
-        }
-      }
-      if (userEmail.isNotEmpty) {
-        prefill['email'] = userEmail;
-        print('[RAZORPAY_GATEWAY] Added email to prefill: $userEmail');
-      }
-      
-      // When using order_id, Razorpay gets amount from order itself
-      // But we still need to provide it for validation
-      var options = <String, dynamic>{
-        'key': _razorpayKeyId,
-        'amount': amountInt, // Must match order amount exactly
-        'currency': orderData.currency,
-        'name': 'EMI Payment',
-        'description': 'Installment ${installment.installmentNumber} - ${installment.emiId.billNumber}',
-        'order_id': orderData.orderId,
-        'theme': <String, String>{
-          'color': '#0CA72F'
-        },
-        'retry': <String, dynamic>{
-          'enabled': true,
-          'max_count': 3
-        }
-      };
-      
-      // Add prefill only if we have data
-      if (prefill.isNotEmpty) {
-        options['prefill'] = prefill;
-        print('[RAZORPAY_GATEWAY] Prefill data added to options: $prefill');
-      } else {
-        print('[RAZORPAY_GATEWAY] No prefill data available, skipping prefill');
-      }
-
-      print('[RAZORPAY_GATEWAY] Razorpay Options:');
-      print('[RAZORPAY_GATEWAY]   - Key: $_razorpayKeyId');
-      print('[RAZORPAY_GATEWAY]   - Amount: $finalAmount paise (₹${finalAmount / 100})');
-      print('[RAZORPAY_GATEWAY]   - Currency: ${options['currency']}');
-      print('[RAZORPAY_GATEWAY]   - Order ID: ${orderData.orderId}');
-      print('[RAZORPAY_GATEWAY]   - Description: ${options['description']}');
-      print('[RAZORPAY_GATEWAY]   - Full Options: $options');
-      
-      // Validate amount matches order
-      if (finalAmount != orderAmountInPaise) {
-        print('[RAZORPAY_GATEWAY] WARNING: Amount mismatch detected!');
-        print('[RAZORPAY_GATEWAY]   - Order amount: $orderAmountInPaise');
-        print('[RAZORPAY_GATEWAY]   - Options amount: $finalAmount');
-      }
-      
-      try {
-        print('[RAZORPAY_GATEWAY] Calling _razorpay.open()...');
-        print('[RAZORPAY_GATEWAY] Razorpay instance: $_razorpay');
-        print('[RAZORPAY_GATEWAY] Options type: ${options.runtimeType}');
-        
-        // Call open method
-        _razorpay.open(options);
-        
-        print('[RAZORPAY_GATEWAY] _razorpay.open() called successfully');
-        print('[RAZORPAY_GATEWAY] Waiting for Razorpay checkout to open...');
-        print('[RAZORPAY_GATEWAY] Note: If checkout does not appear, check Android logs for native errors');
-        print('[RAZORPAY_GATEWAY] Check logcat with filter: "Razorpay" or "razorpay_flutter"');
-      } catch (e, stackTrace) {
-        print('[RAZORPAY_GATEWAY] ERROR: Exception while opening Razorpay checkout: $e');
-        print('[RAZORPAY_GATEWAY] Stack trace: $stackTrace');
-        rethrow;
-      }
-    } catch (e, stackTrace) {
-      print('[RAZORPAY_GATEWAY] ========== PAYMENT FLOW ERROR ==========');
-      print('[RAZORPAY_GATEWAY] Error Type: ${e.runtimeType}');
-      print('[RAZORPAY_GATEWAY] Error Message: ${e.toString()}');
-      print('[RAZORPAY_GATEWAY] Stack Trace: $stackTrace');
-      
-      // Close loading dialog if still open and context is mounted
-      if (context.mounted) {
-        try {
-          Navigator.pop(context); // Close loading dialog if still open
-          print('[RAZORPAY_GATEWAY] Closed loading dialog in error handler');
-        } catch (_) {
-          print('[RAZORPAY_GATEWAY] Could not close dialog (might already be closed)');
-        }
-        
-        final errorMessage = e.toString().replaceAll('Exception: ', '');
-        print('[RAZORPAY_GATEWAY] Showing error to user: $errorMessage');
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Payment Error: $errorMessage'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      } else {
-        print('[RAZORPAY_GATEWAY] Context not mounted, cannot show error message');
-      }
-    } finally {
-      setState(() {
-        _isProcessingPayment = false;
-      });
-      print('[RAZORPAY_GATEWAY] Payment processing flag reset');
-    }
-  }
-
-  void _handlePaymentSuccess(PaymentSuccessResponse response) async {
-    print('[RAZORPAY_GATEWAY] ========== PAYMENT SUCCESS ==========');
-    print('[RAZORPAY_GATEWAY] Payment ID: ${response.paymentId ?? 'N/A'}');
-    print('[RAZORPAY_GATEWAY] Order ID: ${response.orderId ?? 'N/A'}');
-    print('[RAZORPAY_GATEWAY] Signature: ${response.signature != null ? 'Present' : 'Missing'}');
-    
-    // Close any open loading dialogs first
-    if (mounted) {
-      try {
-        // Try to close dialog if it exists
-        if (Navigator.of(context, rootNavigator: true).canPop()) {
-          Navigator.of(context, rootNavigator: true).pop();
-          print('[RAZORPAY_GATEWAY] Closed loading dialog');
-        }
-      } catch (e) {
-        print('[RAZORPAY_GATEWAY] Could not close dialog: $e');
-      }
-    }
-    
-    if (!mounted) {
-      print('[RAZORPAY_GATEWAY] WARNING: Widget not mounted, cannot show success message');
-      return;
-    }
-
-    // Validate required fields for verification
-    if (response.paymentId == null || response.orderId == null || response.signature == null) {
-      print('[RAZORPAY_GATEWAY] ERROR: Missing payment details for verification');
-      print('[RAZORPAY_GATEWAY]   - Payment ID: ${response.paymentId ?? 'MISSING'}');
-      print('[RAZORPAY_GATEWAY]   - Order ID: ${response.orderId ?? 'MISSING'}');
-      print('[RAZORPAY_GATEWAY]   - Signature: ${response.signature != null ? 'Present' : 'MISSING'}');
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Payment successful but verification failed: Missing payment details'),
-          backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 4),
-        ),
-      );
-      return;
-    }
-
-    if (_currentEmiPaymentId == null || _currentEmiPaymentId!.isEmpty) {
-      print('[RAZORPAY_GATEWAY] ERROR: emiPaymentId not stored, cannot verify payment');
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Payment successful but verification failed: Missing payment ID'),
-          backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 4),
-        ),
-      );
-      return;
-    }
-
-    // Show loading message
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            SizedBox(
-              width: Responsive.spacing(context, mobile: 20, tablet: 22, desktop: 24),
-              height: Responsive.spacing(context, mobile: 20, tablet: 22, desktop: 24),
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-              ),
-            ),
-            SizedBox(width: Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
-            Text(
-              'Verifying payment...',
-              style: TextStyle(
-                fontSize: Responsive.fontSize(context, mobile: 14, tablet: 15, desktop: 16),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: Colors.blue,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-
-    // Verify payment with backend
-    try {
-      print('[RAZORPAY_GATEWAY] ========== VERIFYING PAYMENT ==========');
-      print('[RAZORPAY_GATEWAY] Calling verify API...');
-      print('[RAZORPAY_GATEWAY]   - emiPaymentId: $_currentEmiPaymentId');
-      print('[RAZORPAY_GATEWAY]   - razorpayOrderId: ${response.orderId}');
-      print('[RAZORPAY_GATEWAY]   - razorpayPaymentId: ${response.paymentId}');
-      final signaturePreview = response.signature!.length > 20 
-          ? '${response.signature!.substring(0, 20)}...' 
-          : response.signature!;
-      print('[RAZORPAY_GATEWAY]   - razorpaySignature: $signaturePreview');
-
-      final verifyResponse = await _paymentService.verifyRazorpayPayment(
-        emiPaymentId: _currentEmiPaymentId!,
-        razorpayOrderId: response.orderId!,
-        razorpayPaymentId: response.paymentId!,
-        razorpaySignature: response.signature!,
-      );
-
-      print('[RAZORPAY_GATEWAY] Verification response received');
-      print('[RAZORPAY_GATEWAY]   - Success: ${verifyResponse.success}');
-      print('[RAZORPAY_GATEWAY]   - Message: ${verifyResponse.message}');
-
-      if (!mounted) return;
-
-      if (verifyResponse.success) {
-        print('[RAZORPAY_GATEWAY] ✅ Payment verified successfully!');
-        
-        // Clear stored payment ID
-        _currentEmiPaymentId = null;
-        
-        // Unlock device after successful payment verification
-        print('[RAZORPAY_GATEWAY] Unlocking device after payment verification...');
-        await AppOverlayService.unlockDevice();
-        print('[RAZORPAY_GATEWAY] Device unlocked successfully');
-        
-        // Close any open loading dialogs
-        if (mounted) {
-          try {
-            // Close dialog if it exists
-            if (Navigator.of(context, rootNavigator: true).canPop()) {
-              Navigator.of(context, rootNavigator: true).pop();
-              print('[RAZORPAY_GATEWAY] Closed loading dialog after verification');
-            }
-          } catch (e) {
-            print('[RAZORPAY_GATEWAY] Could not close dialog: $e');
-          }
-        }
-
-        // Show success message
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-                  'Payment Verified Successfully!',
-              style: GoogleFonts.poppins(
-                fontWeight: FontWeight.bold,
-                fontSize: Responsive.fontSize(context, mobile: 16, tablet: 17, desktop: 18),
-                    color: Colors.white,
-              ),
-            ),
-            SizedBox(height: Responsive.spacing(context, mobile: 4, tablet: 5, desktop: 6)),
-            Text(
-                  'Payment ID: ${response.paymentId}',
-              style: TextStyle(
-                fontSize: Responsive.fontSize(context, mobile: 12, tablet: 13, desktop: 14),
-              ),
-            ),
-          ],
-        ),
-        backgroundColor: Colors.green,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      } else {
-        print('[RAZORPAY_GATEWAY] ❌ Payment verification failed');
-        print('[RAZORPAY_GATEWAY]   - Message: ${verifyResponse.message}');
-        
-        // Close any open dialogs
-        if (mounted) {
-          try {
-            if (Navigator.of(context, rootNavigator: true).canPop()) {
-              Navigator.of(context, rootNavigator: true).pop();
-              print('[RAZORPAY_GATEWAY] Closed dialog after verification failure');
-            }
-          } catch (e) {
-            print('[RAZORPAY_GATEWAY] Could not close dialog: $e');
-          }
-        }
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Payment verification failed: ${verifyResponse.message}'),
-            backgroundColor: Colors.orange,
-            duration: const Duration(seconds: 4),
-          ),
-        );
-      }
-    } catch (e) {
-      print('[RAZORPAY_GATEWAY] ❌ ERROR during payment verification: $e');
-      
-      if (!mounted) return;
-      
-      // Close any open dialogs
-      try {
-        if (Navigator.of(context, rootNavigator: true).canPop()) {
-          Navigator.of(context, rootNavigator: true).pop();
-          print('[RAZORPAY_GATEWAY] Closed dialog after verification error');
-        }
-      } catch (e) {
-        print('[RAZORPAY_GATEWAY] Could not close dialog: $e');
-      }
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Payment successful but verification error: ${e.toString().replaceAll('Exception: ', '')}'),
-          backgroundColor: Colors.orange,
-          duration: const Duration(seconds: 4),
-        ),
-      );
-    }
-  }
-
-  void _handlePaymentError(PaymentFailureResponse response) {
-    print('[RAZORPAY_GATEWAY] ========== PAYMENT ERROR CALLBACK TRIGGERED ==========');
-    print('[RAZORPAY_GATEWAY] ⚠️ THIS IS THE EXACT ERROR FROM RAZORPAY ⚠️');
-    print('[RAZORPAY_GATEWAY] Error Code: ${response.code ?? 'Unknown'}');
-    print('[RAZORPAY_GATEWAY] Error Message: ${response.message ?? 'No message'}');
-    
-    if (response.error != null) {
-      print('[RAZORPAY_GATEWAY] Error Details: ${response.error}');
-      print('[RAZORPAY_GATEWAY] Full Error Object: ${response.error.toString()}');
-      try {
-        if (response.error is Map) {
-          final errorMap = response.error as Map;
-          print('[RAZORPAY_GATEWAY] Error Map Keys: ${errorMap.keys.toList()}');
-          errorMap.forEach((key, value) {
-            print('[RAZORPAY_GATEWAY]   - $key: $value');
-          });
-        }
-      } catch (e) {
-        print('[RAZORPAY_GATEWAY] Could not parse error details: $e');
-      }
-    }
-    
-    // Log common error scenarios
-    if (response.code == Razorpay.INVALID_OPTIONS) {
-      print('[RAZORPAY_GATEWAY] ❌ ERROR TYPE: Invalid Options');
-      print('[RAZORPAY_GATEWAY] Most Common Causes:');
-      print('[RAZORPAY_GATEWAY]   1. KEY MISMATCH - Backend used different key to create order');
-      print('[RAZORPAY_GATEWAY]   2. Amount mismatch with order');
-      print('[RAZORPAY_GATEWAY]   3. Invalid order_id format');
-      print('[RAZORPAY_GATEWAY]   4. Order created with different account');
-      print('[RAZORPAY_GATEWAY] SOLUTION: Verify backend uses SAME key: rzp_live_RftawzItpzRh1C');
-    } else if (response.code == Razorpay.NETWORK_ERROR) {
-      print('[RAZORPAY_GATEWAY] ❌ ERROR TYPE: Network Error');
-    } else if (response.code == Razorpay.PAYMENT_CANCELLED) {
-      print('[RAZORPAY_GATEWAY] ⚠️ Payment Cancelled by User');
-    } else {
-      print('[RAZORPAY_GATEWAY] ❌ ERROR TYPE: ${response.code}');
-    }
-    
-    // Map error codes to user-friendly messages
-    String errorCodeDescription = 'Unknown error';
-    switch (response.code) {
-      case Razorpay.NETWORK_ERROR:
-        errorCodeDescription = 'Network Error';
-        break;
-      case Razorpay.INVALID_OPTIONS:
-        errorCodeDescription = 'Invalid Options';
-        break;
-      case Razorpay.PAYMENT_CANCELLED:
-        errorCodeDescription = 'Payment Cancelled';
-        break;
-      case Razorpay.TLS_ERROR:
-        errorCodeDescription = 'TLS Error';
-        break;
-      case Razorpay.INCOMPATIBLE_PLUGIN:
-        errorCodeDescription = 'Incompatible Plugin';
-        break;
-      case Razorpay.UNKNOWN_ERROR:
-        errorCodeDescription = 'Unknown Error';
-        break;
-    }
-    print('[RAZORPAY_GATEWAY] Error Code Description: $errorCodeDescription');
-    
-    if (!mounted) {
-      print('[RAZORPAY_GATEWAY] WARNING: Widget not mounted, cannot show error message');
-      return;
-    }
-
-    String errorMessage = 'Payment failed';
-    if (response.code == Razorpay.PAYMENT_CANCELLED) {
-      errorMessage = 'Payment was cancelled by user';
-      print('[RAZORPAY_GATEWAY] User cancelled the payment');
-    } else if (response.message != null) {
-      errorMessage = response.message!;
-    }
-
-    print('[RAZORPAY_GATEWAY] Showing error message to user: $errorMessage');
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(errorMessage),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 4),
-      ),
-    );
-  }
-
-  void _handleExternalWallet(ExternalWalletResponse response) {
-    print('[RAZORPAY_GATEWAY] ========== EXTERNAL WALLET SELECTED ==========');
-    print('[RAZORPAY_GATEWAY] Wallet Name: ${response.walletName ?? 'Unknown'}');
-    
-    if (!mounted) {
-      print('[RAZORPAY_GATEWAY] WARNING: Widget not mounted, cannot show wallet message');
-      return;
-    }
-
-    print('[RAZORPAY_GATEWAY] Showing wallet selection message to user');
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('External wallet selected: ${response.walletName ?? 'Unknown'}'),
-        backgroundColor: Colors.blue,
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
 }
 
 // Installments Dialog Widget
 class _InstallmentsDialog extends StatelessWidget {
   final List<PendingPaymentModel> installments;
-  final PendingPaymentModel? nearestPending;
-  final Future<void> Function(BuildContext, PendingPaymentModel) onPayNow;
 
-  const _InstallmentsDialog({
-    required this.installments,
-    this.nearestPending,
-    required this.onPayNow,
-  });
+  const _InstallmentsDialog({required this.installments});
 
   String _formatDate(DateTime date) {
     const months = [
@@ -1039,53 +672,153 @@ class _InstallmentsDialog extends StatelessWidget {
     return '${date.day.toString().padLeft(2, '0')} ${months[date.month - 1]} ${date.year}';
   }
 
+  void _showPaymentOptions(BuildContext context, PendingPaymentModel installment) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _PaymentMethodBottomSheet(installment: installment),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-
+    final screenHeight = MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
+    
     return Dialog(
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(Responsive.spacing(context, mobile: 16, tablet: 18, desktop: 20)),
+        borderRadius: BorderRadius.circular(Responsive.spacing(context, mobile: 24, tablet: 28, desktop: 32)),
       ),
-      child: ConstrainedBox(
+      insetPadding: Responsive.padding(
+        context,
+        mobile: const EdgeInsets.symmetric(horizontal: 16, vertical: 40),
+        tablet: const EdgeInsets.symmetric(horizontal: 40, vertical: 60),
+        desktop: const EdgeInsets.symmetric(horizontal: 120, vertical: 80),
+      ),
+      backgroundColor: Colors.transparent,
+      child: Container(
+        width: Responsive.isDesktop(screenWidth) 
+            ? ResponsiveBreakpoints.maxContentWidth * 0.65 
+            : null,
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.85,
-          maxWidth: MediaQuery.of(context).size.width * 0.95,
+          maxHeight: screenHeight * 0.9,
+          maxWidth: Responsive.isDesktop(screenWidth) 
+              ? ResponsiveBreakpoints.maxContentWidth * 0.65 
+              : screenWidth * 0.95,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(Responsive.spacing(context, mobile: 24, tablet: 28, desktop: 32)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.15),
+              blurRadius: 24,
+              offset: const Offset(0, 8),
+              spreadRadius: 0,
+            ),
+          ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Header
+            // Header with gradient
             Container(
               padding: Responsive.padding(
                 context,
-                mobile: const EdgeInsets.all(16),
-                tablet: const EdgeInsets.all(20),
-                desktop: const EdgeInsets.all(24),
+                mobile: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                tablet: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+                desktop: const EdgeInsets.symmetric(horizontal: 28, vertical: 28),
               ),
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.only(
-                  topLeft: Radius.circular(Responsive.spacing(context, mobile: 16, tablet: 18, desktop: 20)),
-                  topRight: Radius.circular(Responsive.spacing(context, mobile: 16, tablet: 18, desktop: 20)),
+                gradient: LinearGradient(
+                  colors: [Colors.blue.shade500, Colors.blue.shade700],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(Responsive.spacing(context, mobile: 20, tablet: 24, desktop: 28)),
+                  topRight: Radius.circular(Responsive.spacing(context, mobile: 20, tablet: 24, desktop: 28)),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.blue.withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: Row(
                 children: [
-                  Expanded(
-                    child: Text(
-                      'Installments',
-                      style: GoogleFonts.poppins(
-                        fontSize: Responsive.fontSize(context, mobile: 18, tablet: 20, desktop: 22),
-                        fontWeight: FontWeight.w600,
+                  Container(
+                    padding: EdgeInsets.all(
+                      Responsive.spacing(context, mobile: 10, tablet: 12, desktop: 14),
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(
+                        Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    icon: Icon(
-                      Icons.close,
-                      size: Responsive.spacing(context, mobile: 20, tablet: 22, desktop: 24),
+                    child: Icon(
+                      Icons.payment,
+                      color: Colors.white,
+                      size: Responsive.spacing(context, mobile: 24, tablet: 28, desktop: 32),
                     ),
-                    onPressed: () => Navigator.pop(context),
+                  ),
+                  SizedBox(width: Responsive.spacing(context, mobile: 14, tablet: 16, desktop: 18)),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Installments',
+                          style: GoogleFonts.poppins(
+                            fontSize: Responsive.fontSize(context, mobile: 22, tablet: 24, desktop: 28),
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                            letterSpacing: 0.5,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                        SizedBox(height: Responsive.spacing(context, mobile: 2, tablet: 3, desktop: 4)),
+                        Text(
+                          '${installments.length} ${installments.length == 1 ? 'installment' : 'installments'}',
+                          style: GoogleFonts.poppins(
+                            fontSize: Responsive.fontSize(context, mobile: 13, tablet: 14, desktop: 15),
+                            fontWeight: FontWeight.w500,
+                            color: Colors.white.withOpacity(0.9),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: () => Navigator.pop(context),
+                      borderRadius: BorderRadius.circular(
+                        Responsive.spacing(context, mobile: 20, tablet: 24, desktop: 28),
+                      ),
+                      child: Container(
+                        padding: EdgeInsets.all(
+                          Responsive.spacing(context, mobile: 8, tablet: 10, desktop: 12),
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.close,
+                          color: Colors.white,
+                          size: Responsive.spacing(context, mobile: 20, tablet: 22, desktop: 24),
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -1097,21 +830,53 @@ class _InstallmentsDialog extends StatelessWidget {
                   ? Padding(
                       padding: Responsive.padding(
                         context,
-                        mobile: const EdgeInsets.all(32),
-                        tablet: const EdgeInsets.all(40),
-                        desktop: const EdgeInsets.all(48),
+                        mobile: const EdgeInsets.all(48),
+                        tablet: const EdgeInsets.all(60),
+                        desktop: const EdgeInsets.all(72),
                       ),
-                      child: Text(
-                        'No installments found',
-                        style: GoogleFonts.poppins(
-                          fontSize: Responsive.fontSize(context, mobile: 16, tablet: 18, desktop: 20),
-                          color: Colors.grey,
-                        ),
-                        textAlign: TextAlign.center,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: EdgeInsets.all(
+                              Responsive.spacing(context, mobile: 24, tablet: 28, desktop: 32),
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              Icons.inbox_outlined,
+                              size: Responsive.spacing(context, mobile: 64, tablet: 80, desktop: 96),
+                              color: Colors.grey.shade400,
+                            ),
+                          ),
+                          SizedBox(height: Responsive.spacing(context, mobile: 20, tablet: 24, desktop: 28)),
+                          Text(
+                            'No installments found',
+                            style: GoogleFonts.poppins(
+                              fontSize: Responsive.fontSize(context, mobile: 18, tablet: 20, desktop: 22),
+                              color: Colors.grey.shade700,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          SizedBox(height: Responsive.spacing(context, mobile: 8, tablet: 10, desktop: 12)),
+                          Text(
+                            'All installments have been paid',
+                            style: GoogleFonts.poppins(
+                              fontSize: Responsive.fontSize(context, mobile: 14, tablet: 15, desktop: 16),
+                              color: Colors.grey.shade500,
+                              fontWeight: FontWeight.w400,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
                       ),
                     )
                   : ListView.builder(
                       shrinkWrap: true,
+                      physics: const BouncingScrollPhysics(),
                       padding: Responsive.padding(
                         context,
                         mobile: const EdgeInsets.all(16),
@@ -1122,164 +887,307 @@ class _InstallmentsDialog extends StatelessWidget {
                       itemBuilder: (context, index) {
                         final installment = installments[index];
                         final isPending = installment.status.toLowerCase() == 'pending';
-                        final isNearestPending = nearestPending != null && 
-                                                 installment.id == nearestPending!.id;
                         
                         return Container(
                           margin: EdgeInsets.only(
-                            bottom: Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16),
-                          ),
-                          padding: Responsive.padding(
-                            context,
-                            mobile: const EdgeInsets.all(14),
-                            tablet: const EdgeInsets.all(18),
-                            desktop: const EdgeInsets.all(20),
+                            bottom: Responsive.spacing(context, mobile: 16, tablet: 18, desktop: 20),
                           ),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             border: Border.all(
-                              color: isPending ? Colors.orange.shade200 : Colors.green.shade200,
+                              color: isPending 
+                                  ? Colors.orange.shade300 
+                                  : Colors.green.shade300,
                               width: 1.5,
                             ),
                             borderRadius: BorderRadius.circular(
-                              Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16),
+                              Responsive.spacing(context, mobile: 18, tablet: 20, desktop: 22),
                             ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: (isPending ? Colors.orange : Colors.green).withOpacity(0.15),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                                spreadRadius: 0,
+                              ),
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.05),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                                spreadRadius: 0,
+                              ),
+                            ],
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // First Row - Installment info and amount
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Flexible(
-                                    flex: 2,
-                                    child: Wrap(
-                                      spacing: Responsive.spacing(context, mobile: 6, tablet: 8, desktop: 10),
-                                      runSpacing: Responsive.spacing(context, mobile: 6, tablet: 8, desktop: 10),
+                              Padding(
+                                padding: Responsive.padding(
+                                  context,
+                                  mobile: const EdgeInsets.all(16),
+                                  tablet: const EdgeInsets.all(20),
+                                  desktop: const EdgeInsets.all(24),
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
+                                        Expanded(
+                                          child: Wrap(
+                                            spacing: Responsive.spacing(context, mobile: 8, tablet: 10, desktop: 12),
+                                            runSpacing: Responsive.spacing(context, mobile: 8, tablet: 10, desktop: 12),
+                                            children: [
+                                              Container(
+                                                padding: EdgeInsets.symmetric(
+                                                  horizontal: Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16),
+                                                  vertical: Responsive.spacing(context, mobile: 8, tablet: 10, desktop: 12),
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  gradient: LinearGradient(
+                                                    colors: isPending 
+                                                        ? [Colors.orange.shade400, Colors.orange.shade600]
+                                                        : [Colors.green.shade400, Colors.green.shade600],
+                                                    begin: Alignment.topLeft,
+                                                    end: Alignment.bottomRight,
+                                                  ),
+                                                  borderRadius: BorderRadius.circular(
+                                                    Responsive.spacing(context, mobile: 10, tablet: 12, desktop: 14),
+                                                  ),
+                                                  boxShadow: [
+                                                    BoxShadow(
+                                                      color: (isPending ? Colors.orange : Colors.green).withOpacity(0.3),
+                                                      blurRadius: 4,
+                                                      offset: const Offset(0, 2),
+                                                    ),
+                                                  ],
+                                                ),
+                                                child: Text(
+                                                  'Installment ${installment.installmentNumber}',
+                                                  style: GoogleFonts.poppins(
+                                                    fontSize: Responsive.fontSize(context, mobile: 13, tablet: 14, desktop: 15),
+                                                    fontWeight: FontWeight.w700,
+                                                    color: Colors.white,
+                                                  ),
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ),
+                                              Container(
+                                                padding: EdgeInsets.symmetric(
+                                                  horizontal: Responsive.spacing(context, mobile: 10, tablet: 12, desktop: 14),
+                                                  vertical: Responsive.spacing(context, mobile: 6, tablet: 8, desktop: 10),
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.grey.shade100,
+                                                  borderRadius: BorderRadius.circular(
+                                                    Responsive.spacing(context, mobile: 8, tablet: 10, desktop: 12),
+                                                  ),
+                                                  border: Border.all(
+                                                    color: Colors.grey.shade300,
+                                                    width: 1,
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  installment.status.toUpperCase(),
+                                                  style: GoogleFonts.poppins(
+                                                    fontSize: Responsive.fontSize(context, mobile: 10, tablet: 11, desktop: 12),
+                                                    fontWeight: FontWeight.w600,
+                                                    color: Colors.grey.shade700,
+                                                    letterSpacing: 0.5,
+                                                  ),
+                                                  overflow: TextOverflow.ellipsis,
+                                                  maxLines: 1,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        SizedBox(width: Responsive.spacing(context, mobile: 8, tablet: 10, desktop: 12)),
                                         Container(
                                           padding: EdgeInsets.symmetric(
-                                            horizontal: Responsive.spacing(context, mobile: 8, tablet: 10, desktop: 12),
-                                            vertical: Responsive.spacing(context, mobile: 4, tablet: 5, desktop: 6),
+                                            horizontal: Responsive.spacing(context, mobile: 10, tablet: 12, desktop: 14),
+                                            vertical: Responsive.spacing(context, mobile: 8, tablet: 10, desktop: 12),
                                           ),
                                           decoration: BoxDecoration(
-                                            color: isPending 
-                                                ? Colors.orange.shade50 
-                                                : Colors.green.shade50,
+                                            gradient: LinearGradient(
+                                              colors: [Colors.blue.shade400, Colors.blue.shade600],
+                                              begin: Alignment.topLeft,
+                                              end: Alignment.bottomRight,
+                                            ),
                                             borderRadius: BorderRadius.circular(
-                                              Responsive.spacing(context, mobile: 6, tablet: 8, desktop: 10),
+                                              Responsive.spacing(context, mobile: 10, tablet: 12, desktop: 14),
                                             ),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.blue.withOpacity(0.3),
+                                                blurRadius: 4,
+                                                offset: const Offset(0, 2),
+                                              ),
+                                            ],
                                           ),
                                           child: Text(
-                                            'Installment ${installment.installmentNumber}',
+                                            '₹${installment.amount.toStringAsFixed(0)}',
                                             style: GoogleFonts.poppins(
-                                              fontSize: Responsive.fontSize(context, mobile: 12, tablet: 13, desktop: 14),
-                                              fontWeight: FontWeight.w600,
-                                              color: isPending ? Colors.orange.shade700 : Colors.green.shade700,
-                                            ),
-                                          ),
-                                        ),
-                                        Container(
-                                          padding: EdgeInsets.symmetric(
-                                            horizontal: Responsive.spacing(context, mobile: 6, tablet: 8, desktop: 10),
-                                            vertical: Responsive.spacing(context, mobile: 3, tablet: 4, desktop: 5),
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.grey.shade100,
-                                            borderRadius: BorderRadius.circular(
-                                              Responsive.spacing(context, mobile: 5, tablet: 6, desktop: 7),
-                                            ),
-                                          ),
-                                          child: Text(
-                                            installment.status.toUpperCase(),
-                                            style: GoogleFonts.poppins(
-                                              fontSize: Responsive.fontSize(context, mobile: 10, tablet: 11, desktop: 12),
-                                              fontWeight: FontWeight.w500,
-                                              color: Colors.grey.shade700,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Flexible(
-                                    flex: 1,
-                                    child: Text(
-                                      '₹${installment.amount.toStringAsFixed(0)}',
-                                      style: GoogleFonts.poppins(
-                                        fontSize: Responsive.fontSize(context, mobile: 16, tablet: 18, desktop: 20),
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.blue,
-                                      ),
-                                      textAlign: TextAlign.end,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              SizedBox(height: Responsive.spacing(context, mobile: 10, tablet: 12, desktop: 14)),
-                              Row(
-                                children: [
-                                  Icon(
-                                    Icons.calendar_today,
-                                    size: Responsive.spacing(context, mobile: 16, tablet: 18, desktop: 20),
-                                    color: Colors.grey.shade600,
-                                  ),
-                                  SizedBox(width: Responsive.spacing(context, mobile: 6, tablet: 8, desktop: 10)),
-                                  Text(
-                                    'Due Date: ${_formatDate(installment.dueDate)}',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: Responsive.fontSize(context, mobile: 13, tablet: 14, desktop: 15),
-                                      color: Colors.grey.shade700,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              // Pay Now Button for nearest pending installment
-                              if (isNearestPending) ...[
-                                SizedBox(height: Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton(
-                                    onPressed: () => _handlePayNow(context, installment),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.green,
-                                      foregroundColor: Colors.white,
-                                      padding: EdgeInsets.symmetric(
-                                        vertical: Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16),
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(
-                                          Responsive.spacing(context, mobile: 10, tablet: 12, desktop: 14),
-                                        ),
-                                      ),
-                                      elevation: 2,
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          Icons.payment,
-                                          size: Responsive.spacing(context, mobile: 18, tablet: 20, desktop: 22),
-                                        ),
-                                        SizedBox(width: Responsive.spacing(context, mobile: 6, tablet: 8, desktop: 10)),
-                                        Flexible(
-                                          child: Text(
-                                            'Pay Now',
-                                            style: GoogleFonts.poppins(
-                                              fontSize: Responsive.fontSize(context, mobile: 14, tablet: 16, desktop: 18),
-                                              fontWeight: FontWeight.w600,
+                                              fontSize: Responsive.fontSize(context, mobile: 18, tablet: 20, desktop: 22),
+                                              fontWeight: FontWeight.w800,
+                                              color: Colors.white,
                                             ),
                                             overflow: TextOverflow.ellipsis,
                                           ),
                                         ),
                                       ],
                                     ),
+                                    SizedBox(height: Responsive.spacing(context, mobile: 16, tablet: 18, desktop: 20)),
+                                    Container(
+                                      padding: EdgeInsets.all(
+                                        Responsive.spacing(context, mobile: 14, tablet: 16, desktop: 18),
+                                      ),
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            Colors.blue.shade50,
+                                            Colors.blue.shade50.withOpacity(0.7),
+                                          ],
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                        ),
+                                        borderRadius: BorderRadius.circular(
+                                          Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16),
+                                        ),
+                                        border: Border.all(
+                                          color: Colors.blue.shade100,
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            padding: EdgeInsets.all(
+                                              Responsive.spacing(context, mobile: 8, tablet: 10, desktop: 12),
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.blue.shade100,
+                                              borderRadius: BorderRadius.circular(
+                                                Responsive.spacing(context, mobile: 8, tablet: 10, desktop: 12),
+                                              ),
+                                            ),
+                                            child: Icon(
+                                              Icons.calendar_today,
+                                              size: Responsive.spacing(context, mobile: 18, tablet: 20, desktop: 22),
+                                              color: Colors.blue.shade700,
+                                            ),
+                                          ),
+                                          SizedBox(width: Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  'Due Date',
+                                                  style: GoogleFonts.poppins(
+                                                    fontSize: Responsive.fontSize(context, mobile: 11, tablet: 12, desktop: 13),
+                                                    color: Colors.grey.shade600,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                                SizedBox(height: Responsive.spacing(context, mobile: 2, tablet: 3, desktop: 4)),
+                                                Text(
+                                                  _formatDate(installment.dueDate),
+                                                  style: GoogleFonts.poppins(
+                                                    fontSize: Responsive.fontSize(context, mobile: 15, tablet: 16, desktop: 17),
+                                                    color: Colors.grey.shade900,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                  overflow: TextOverflow.ellipsis,
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              // Pay Now Button for pending installments
+                              if (isPending)
+                                Container(
+                                  width: double.infinity,
+                                  margin: EdgeInsets.only(
+                                    left: Responsive.spacing(context, mobile: 16, tablet: 20, desktop: 24),
+                                    right: Responsive.spacing(context, mobile: 16, tablet: 20, desktop: 24),
+                                    bottom: Responsive.spacing(context, mobile: 16, tablet: 20, desktop: 24),
+                                  ),
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(
+                                      Responsive.spacing(context, mobile: 14, tablet: 16, desktop: 18),
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.blue.withOpacity(0.4),
+                                        blurRadius: 12,
+                                        offset: const Offset(0, 6),
+                                        spreadRadius: 0,
+                                      ),
+                                    ],
+                                  ),
+                                  child: ElevatedButton(
+                                    onPressed: () => _showPaymentOptions(context, installment),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.blue.shade600,
+                                      foregroundColor: Colors.white,
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: Responsive.spacing(context, mobile: 16, tablet: 20, desktop: 24),
+                                        vertical: Responsive.spacing(context, mobile: 16, tablet: 18, desktop: 20),
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(
+                                          Responsive.spacing(context, mobile: 14, tablet: 16, desktop: 18),
+                                        ),
+                                      ),
+                                      elevation: 0,
+                                    ),
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Container(
+                                            padding: EdgeInsets.all(
+                                              Responsive.spacing(context, mobile: 6, tablet: 8, desktop: 10),
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white.withOpacity(0.2),
+                                              borderRadius: BorderRadius.circular(
+                                                Responsive.spacing(context, mobile: 6, tablet: 8, desktop: 10),
+                                              ),
+                                            ),
+                                            child: Icon(
+                                              Icons.payment,
+                                              size: Responsive.spacing(context, mobile: 18, tablet: 20, desktop: 22),
+                                            ),
+                                          ),
+                                          SizedBox(width: Responsive.spacing(context, mobile: 8, tablet: 10, desktop: 12)),
+                                          Flexible(
+                                            child: Text(
+                                              'Pay Now',
+                                              style: GoogleFonts.poppins(
+                                                fontSize: Responsive.fontSize(context, mobile: 16, tablet: 18, desktop: 20),
+                                                fontWeight: FontWeight.w700,
+                                                letterSpacing: 0.5,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                              maxLines: 1,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                   ),
                                 ),
-                              ],
                             ],
                           ),
                         );
@@ -1291,8 +1199,1026 @@ class _InstallmentsDialog extends StatelessWidget {
       ),
     );
   }
+}
 
-  void _handlePayNow(BuildContext context, PendingPaymentModel installment) {
-    onPayNow(context, installment);
+// Payment Method Selection Bottom Sheet
+class _PaymentMethodBottomSheet extends StatelessWidget {
+  final PendingPaymentModel installment;
+
+  const _PaymentMethodBottomSheet({required this.installment});
+
+  void _handlePaymentMethod(BuildContext context, String method) {
+    Navigator.pop(context); // Close bottom sheet
+    
+    switch (method) {
+      case 'Online':
+        // Show Razorpay payment screen
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (context) => RazorpayPaymentScreen(installment: installment),
+        );
+        break;
+      case 'QR Code':
+        // Show QR code screen
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (context) => _QrCodePaymentScreen(installment: installment),
+        );
+        break;
+      case 'Bank':
+        // Show bank transfer form
+        showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          backgroundColor: Colors.transparent,
+          builder: (context) => _BankTransferScreen(installment: installment),
+        );
+        break;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    
+    return Container(
+      constraints: BoxConstraints(
+        maxWidth: Responsive.isDesktop(screenWidth) 
+            ? ResponsiveBreakpoints.maxContentWidth * 0.5 
+            : double.infinity,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(Responsive.spacing(context, mobile: 24, tablet: 28, desktop: 32)),
+          topRight: Radius.circular(Responsive.spacing(context, mobile: 24, tablet: 28, desktop: 32)),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle bar
+          Container(
+            margin: EdgeInsets.only(
+              top: Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16),
+            ),
+            width: Responsive.spacing(context, mobile: 40, tablet: 48, desktop: 56),
+            height: Responsive.spacing(context, mobile: 4, tablet: 5, desktop: 6),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(Responsive.spacing(context, mobile: 2, tablet: 2.5, desktop: 3)),
+            ),
+          ),
+          
+          // Header
+          Padding(
+            padding: Responsive.padding(
+              context,
+              mobile: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+              tablet: const EdgeInsets.fromLTRB(28, 24, 28, 20),
+              desktop: const EdgeInsets.fromLTRB(32, 28, 32, 24),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  'Select Payment Method',
+                  style: GoogleFonts.poppins(
+                    fontSize: Responsive.fontSize(context, mobile: 22, tablet: 24, desktop: 28),
+                    fontWeight: FontWeight.w700,
+                    color: Colors.grey.shade900,
+                  ),
+                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1,
+                ),
+                SizedBox(height: Responsive.spacing(context, mobile: 8, tablet: 10, desktop: 12)),
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: Responsive.spacing(context, mobile: 16, tablet: 20, desktop: 24),
+                    vertical: Responsive.spacing(context, mobile: 10, tablet: 12, desktop: 14),
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(
+                      Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16),
+                    ),
+                  ),
+                  child: Text(
+                    'Amount: ₹${installment.amount.toStringAsFixed(0)}',
+                    style: GoogleFonts.poppins(
+                      fontSize: Responsive.fontSize(context, mobile: 18, tablet: 20, desktop: 22),
+                      fontWeight: FontWeight.w700,
+                      color: Colors.blue.shade700,
+                    ),
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          // Payment Options
+          Padding(
+            padding: Responsive.padding(
+              context,
+              mobile: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+              tablet: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+              desktop: const EdgeInsets.fromLTRB(28, 0, 28, 28),
+            ),
+            child: Column(
+              children: [
+                _PaymentOptionCard(
+                  title: 'Online Payment',
+                  subtitle: 'Pay via UPI, Cards, Net Banking',
+                  icon: Icons.payment,
+                  color: Colors.blue,
+                  onTap: () => _handlePaymentMethod(context, 'Online'),
+                ),
+                SizedBox(height: Responsive.spacing(context, mobile: 14, tablet: 16, desktop: 18)),
+                _PaymentOptionCard(
+                  title: 'QR Code',
+                  subtitle: 'Scan QR code to pay',
+                  icon: Icons.qr_code_scanner,
+                  color: Colors.green,
+                  onTap: () => _handlePaymentMethod(context, 'QR Code'),
+                ),
+                SizedBox(height: Responsive.spacing(context, mobile: 14, tablet: 16, desktop: 18)),
+                _PaymentOptionCard(
+                  title: 'Bank Transfer',
+                  subtitle: 'Direct bank transfer details',
+                  icon: Icons.account_balance,
+                  color: Colors.orange,
+                  onTap: () => _handlePaymentMethod(context, 'Bank'),
+                ),
+              ],
+            ),
+          ),
+          
+          // Bottom safe area
+          SizedBox(height: MediaQuery.of(context).padding.bottom),
+        ],
+      ),
+    );
   }
 }
+
+// Payment Option Card Widget
+class _PaymentOptionCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _PaymentOptionCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(
+          Responsive.spacing(context, mobile: 16, tablet: 18, desktop: 20),
+        ),
+        child: Container(
+          padding: Responsive.padding(
+            context,
+            mobile: const EdgeInsets.all(20),
+            tablet: const EdgeInsets.all(24),
+            desktop: const EdgeInsets.all(28),
+          ),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(
+              color: color.withOpacity(0.3),
+              width: 2,
+            ),
+            borderRadius: BorderRadius.circular(
+              Responsive.spacing(context, mobile: 16, tablet: 18, desktop: 20),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: color.withOpacity(0.1),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+                spreadRadius: 0,
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(
+                  Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16),
+                ),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(
+                    Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16),
+                  ),
+                ),
+                child: Icon(
+                  icon,
+                  color: color,
+                  size: Responsive.spacing(context, mobile: 28, tablet: 32, desktop: 36),
+                ),
+              ),
+              SizedBox(width: Responsive.spacing(context, mobile: 16, tablet: 20, desktop: 24)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: GoogleFonts.poppins(
+                        fontSize: Responsive.fontSize(context, mobile: 18, tablet: 20, desktop: 22),
+                        fontWeight: FontWeight.w700,
+                        color: Colors.grey.shade900,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                    SizedBox(height: Responsive.spacing(context, mobile: 4, tablet: 6, desktop: 8)),
+                    Text(
+                      subtitle,
+                      style: GoogleFonts.poppins(
+                        fontSize: Responsive.fontSize(context, mobile: 14, tablet: 15, desktop: 16),
+                        color: Colors.grey.shade600,
+                        fontWeight: FontWeight.w400,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 2,
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.arrow_forward_ios,
+                color: color,
+                size: Responsive.spacing(context, mobile: 20, tablet: 22, desktop: 24),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// QR Code Payment Screen
+class _QrCodePaymentScreen extends StatefulWidget {
+  final PendingPaymentModel installment;
+
+  const _QrCodePaymentScreen({required this.installment});
+
+  @override
+  State<_QrCodePaymentScreen> createState() => _QrCodePaymentScreenState();
+}
+
+class _QrCodePaymentScreenState extends State<_QrCodePaymentScreen> {
+  final EmiService _emiService = EmiService();
+  final TextEditingController _transactionIdController = TextEditingController();
+  bool _isLoading = false;
+  bool _isVerifying = false;
+  QrCodeData? _qrCodeData;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadQrCode();
+  }
+
+  Future<void> _loadQrCode() async {
+    setState(() => _isLoading = true);
+    try {
+      final response = await _emiService.getQrCode(widget.installment.id);
+      if (mounted) {
+        setState(() {
+          _qrCodeData = response.data;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString().replaceAll('Exception: ', '')}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _verifyPayment() async {
+    if (_transactionIdController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter transaction ID'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isVerifying = true);
+    try {
+      final response = await _emiService.verifyQrPayment(
+        emiPaymentId: widget.installment.id,
+        transactionId: _transactionIdController.text.trim(),
+      );
+
+      if (mounted) {
+        setState(() => _isVerifying = false);
+        if (response.success) {
+          Navigator.pop(context); // Close QR code screen
+          Navigator.pop(context); // Close payment method selection
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(response.message),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(response.message),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isVerifying = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString().replaceAll('Exception: ', '')}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _transactionIdController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.9,
+        maxWidth: Responsive.isDesktop(screenWidth) 
+            ? ResponsiveBreakpoints.maxContentWidth * 0.6 
+            : double.infinity,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(Responsive.spacing(context, mobile: 24, tablet: 28, desktop: 32)),
+          topRight: Radius.circular(Responsive.spacing(context, mobile: 24, tablet: 28, desktop: 32)),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle bar
+          Container(
+            margin: EdgeInsets.only(
+              top: Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16),
+            ),
+            width: Responsive.spacing(context, mobile: 40, tablet: 48, desktop: 56),
+            height: Responsive.spacing(context, mobile: 4, tablet: 5, desktop: 6),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(Responsive.spacing(context, mobile: 2, tablet: 2.5, desktop: 3)),
+            ),
+          ),
+          
+          // Header
+          Padding(
+            padding: Responsive.padding(
+              context,
+              mobile: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+              tablet: const EdgeInsets.fromLTRB(28, 24, 28, 20),
+              desktop: const EdgeInsets.fromLTRB(32, 28, 32, 24),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.qr_code_scanner,
+                  color: Colors.green.shade600,
+                  size: Responsive.spacing(context, mobile: 28, tablet: 32, desktop: 36),
+                ),
+                SizedBox(width: Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'QR Code Payment',
+                        style: GoogleFonts.poppins(
+                          fontSize: Responsive.fontSize(context, mobile: 22, tablet: 24, desktop: 28),
+                          fontWeight: FontWeight.w700,
+                          color: Colors.grey.shade900,
+                        ),
+                      ),
+                      SizedBox(height: Responsive.spacing(context, mobile: 4, tablet: 6, desktop: 8)),
+                      Text(
+                        'Amount: ₹${widget.installment.amount.toStringAsFixed(0)}',
+                        style: GoogleFonts.poppins(
+                          fontSize: Responsive.fontSize(context, mobile: 16, tablet: 18, desktop: 20),
+                          fontWeight: FontWeight.w600,
+                          color: Colors.green.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
+          
+          // Content
+          Flexible(
+            child: SingleChildScrollView(
+              padding: Responsive.padding(
+                context,
+                mobile: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                tablet: const EdgeInsets.fromLTRB(28, 0, 28, 28),
+                desktop: const EdgeInsets.fromLTRB(32, 0, 32, 32),
+              ),
+              child: Column(
+                children: [
+                  if (_isLoading)
+                    Padding(
+                      padding: EdgeInsets.all(Responsive.spacing(context, mobile: 40, tablet: 60, desktop: 80)),
+                      child: const CircularProgressIndicator(),
+                    )
+                  else if (_qrCodeData != null) ...[
+                    // UPI ID
+                    Container(
+                      padding: EdgeInsets.all(Responsive.spacing(context, mobile: 16, tablet: 20, desktop: 24)),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade50,
+                        borderRadius: BorderRadius.circular(Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
+                        border: Border.all(color: Colors.green.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.account_circle, color: Colors.green.shade700),
+                          SizedBox(width: Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'UPI ID',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: Responsive.fontSize(context, mobile: 12, tablet: 13, desktop: 14),
+                                    color: Colors.grey.shade600,
+                                  ),
+                                ),
+                                SizedBox(height: Responsive.spacing(context, mobile: 4, tablet: 6, desktop: 8)),
+                                Text(
+                                  _qrCodeData!.upiId,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: Responsive.fontSize(context, mobile: 16, tablet: 18, desktop: 20),
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.grey.shade900,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    SizedBox(height: Responsive.spacing(context, mobile: 24, tablet: 28, desktop: 32)),
+                    
+                    // QR Code Image
+                    Container(
+                      padding: EdgeInsets.all(Responsive.spacing(context, mobile: 20, tablet: 24, desktop: 28)),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(Responsive.spacing(context, mobile: 16, tablet: 18, desktop: 20)),
+                        border: Border.all(color: Colors.grey.shade300, width: 2),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: _qrCodeData!.qrCodeImage.isNotEmpty
+                          ? Image.memory(
+                              base64Decode(_qrCodeData!.qrCodeImage.split(',').last),
+                              width: Responsive.spacing(context, mobile: 250, tablet: 300, desktop: 350),
+                              height: Responsive.spacing(context, mobile: 250, tablet: 300, desktop: 350),
+                              fit: BoxFit.contain,
+                            )
+                          : const Icon(Icons.error, size: 100, color: Colors.red),
+                    ),
+                    
+                    SizedBox(height: Responsive.spacing(context, mobile: 24, tablet: 28, desktop: 32)),
+                    
+                    // Transaction ID Input
+                    TextField(
+                      controller: _transactionIdController,
+                      decoration: InputDecoration(
+                        labelText: 'Transaction ID',
+                        hintText: 'Enter UPI transaction ID',
+                        prefixIcon: const Icon(Icons.receipt),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey.shade50,
+                      ),
+                      style: GoogleFonts.poppins(),
+                    ),
+                    
+                    SizedBox(height: Responsive.spacing(context, mobile: 24, tablet: 28, desktop: 32)),
+                    
+                    // Verify Button
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _isVerifying ? null : _verifyPayment,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green.shade600,
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(
+                            vertical: Responsive.spacing(context, mobile: 16, tablet: 18, desktop: 20),
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
+                          ),
+                          elevation: 4,
+                        ),
+                        child: _isVerifying
+                            ? SizedBox(
+                                height: Responsive.spacing(context, mobile: 24, tablet: 28, desktop: 32),
+                                width: Responsive.spacing(context, mobile: 24, tablet: 28, desktop: 32),
+                                child: const CircularProgressIndicator(
+                                  strokeWidth: 3,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.verified),
+                                  SizedBox(width: Responsive.spacing(context, mobile: 8, tablet: 10, desktop: 12)),
+                                  Text(
+                                    'Verify Payment',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: Responsive.fontSize(context, mobile: 16, tablet: 18, desktop: 20),
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          
+          SizedBox(height: MediaQuery.of(context).padding.bottom),
+        ],
+      ),
+    );
+  }
+}
+
+// Bank Transfer Screen
+class _BankTransferScreen extends StatefulWidget {
+  final PendingPaymentModel installment;
+
+  const _BankTransferScreen({required this.installment});
+
+  @override
+  State<_BankTransferScreen> createState() => _BankTransferScreenState();
+}
+
+class _BankTransferScreenState extends State<_BankTransferScreen> {
+  final EmiService _emiService = EmiService();
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _transactionIdController = TextEditingController();
+  final TextEditingController _bankNameController = TextEditingController();
+  final TextEditingController _accountNumberController = TextEditingController();
+  final TextEditingController _amountController = TextEditingController();
+  DateTime? _paymentDate;
+  String? _screenshotBase64;
+  bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _paymentDate = DateTime.now();
+    _amountController.text = widget.installment.amount.toStringAsFixed(2);
+  }
+
+  Future<void> _pickScreenshot() async {
+    // TODO: Implement image picker
+    // For now, show a message
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Image picker will be implemented'),
+        backgroundColor: Colors.blue,
+      ),
+    );
+  }
+
+  Future<void> _selectDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _paymentDate ?? DateTime.now(),
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) {
+      setState(() => _paymentDate = picked);
+    }
+  }
+
+  Future<void> _submitPayment() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isSubmitting = true);
+    try {
+      final response = await _emiService.verifyBankPayment(
+        emiPaymentId: widget.installment.id,
+        transactionId: _transactionIdController.text.trim(),
+        paymentDate: _paymentDate!.toIso8601String().split('T')[0],
+        amount: double.parse(_amountController.text),
+        bankName: _bankNameController.text.trim(),
+        accountNumber: _accountNumberController.text.trim(),
+        screenshot: _screenshotBase64,
+      );
+
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        if (response.success) {
+          Navigator.pop(context); // Close bank transfer screen
+          Navigator.pop(context); // Close payment method selection
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(response.message),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(response.message),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isSubmitting = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString().replaceAll('Exception: ', '')}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _transactionIdController.dispose();
+    _bankNameController.dispose();
+    _accountNumberController.dispose();
+    _amountController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    
+    return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.9,
+        maxWidth: Responsive.isDesktop(screenWidth) 
+            ? ResponsiveBreakpoints.maxContentWidth * 0.6 
+            : double.infinity,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(Responsive.spacing(context, mobile: 24, tablet: 28, desktop: 32)),
+          topRight: Radius.circular(Responsive.spacing(context, mobile: 24, tablet: 28, desktop: 32)),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Handle bar
+          Container(
+            margin: EdgeInsets.only(
+              top: Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16),
+            ),
+            width: Responsive.spacing(context, mobile: 40, tablet: 48, desktop: 56),
+            height: Responsive.spacing(context, mobile: 4, tablet: 5, desktop: 6),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(Responsive.spacing(context, mobile: 2, tablet: 2.5, desktop: 3)),
+            ),
+          ),
+          
+          // Header
+          Padding(
+            padding: Responsive.padding(
+              context,
+              mobile: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+              tablet: const EdgeInsets.fromLTRB(28, 24, 28, 20),
+              desktop: const EdgeInsets.fromLTRB(32, 28, 32, 24),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.account_balance,
+                  color: Colors.orange.shade600,
+                  size: Responsive.spacing(context, mobile: 28, tablet: 32, desktop: 36),
+                ),
+                SizedBox(width: Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
+                Expanded(
+                  child: Text(
+                    'Bank Transfer Payment',
+                    style: GoogleFonts.poppins(
+                      fontSize: Responsive.fontSize(context, mobile: 22, tablet: 24, desktop: 28),
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey.shade900,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ],
+            ),
+          ),
+          
+          // Form
+          Flexible(
+            child: Form(
+              key: _formKey,
+              child: SingleChildScrollView(
+                padding: Responsive.padding(
+                  context,
+                  mobile: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                  tablet: const EdgeInsets.fromLTRB(28, 0, 28, 28),
+                  desktop: const EdgeInsets.fromLTRB(32, 0, 32, 32),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Transaction ID
+                    TextFormField(
+                      controller: _transactionIdController,
+                      decoration: InputDecoration(
+                        labelText: 'Transaction ID *',
+                        hintText: 'Enter transaction ID',
+                        prefixIcon: const Icon(Icons.receipt),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey.shade50,
+                      ),
+                      validator: (value) => value?.isEmpty ?? true ? 'Please enter transaction ID' : null,
+                    ),
+                    
+                    SizedBox(height: Responsive.spacing(context, mobile: 16, tablet: 20, desktop: 24)),
+                    
+                    // Payment Date
+                    InkWell(
+                      onTap: _selectDate,
+                      child: Container(
+                        padding: EdgeInsets.all(Responsive.spacing(context, mobile: 16, tablet: 18, desktop: 20)),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.calendar_today, color: Colors.grey.shade600),
+                            SizedBox(width: Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Payment Date *',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: Responsive.fontSize(context, mobile: 12, tablet: 13, desktop: 14),
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                  SizedBox(height: Responsive.spacing(context, mobile: 4, tablet: 6, desktop: 8)),
+                                  Text(
+                                    _paymentDate != null
+                                        ? '${_paymentDate!.day}/${_paymentDate!.month}/${_paymentDate!.year}'
+                                        : 'Select date',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: Responsive.fontSize(context, mobile: 16, tablet: 18, desktop: 20),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    
+                    SizedBox(height: Responsive.spacing(context, mobile: 16, tablet: 20, desktop: 24)),
+                    
+                    // Amount
+                    TextFormField(
+                      controller: _amountController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: 'Amount *',
+                        hintText: 'Enter amount',
+                        prefixIcon: const Icon(Icons.currency_rupee),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey.shade50,
+                      ),
+                      validator: (value) {
+                        if (value?.isEmpty ?? true) return 'Please enter amount';
+                        if (double.tryParse(value!) == null) return 'Please enter valid amount';
+                        return null;
+                      },
+                    ),
+                    
+                    SizedBox(height: Responsive.spacing(context, mobile: 16, tablet: 20, desktop: 24)),
+                    
+                    // Bank Name
+                    TextFormField(
+                      controller: _bankNameController,
+                      decoration: InputDecoration(
+                        labelText: 'Bank Name *',
+                        hintText: 'Enter bank name',
+                        prefixIcon: const Icon(Icons.account_balance),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey.shade50,
+                      ),
+                      validator: (value) => value?.isEmpty ?? true ? 'Please enter bank name' : null,
+                    ),
+                    
+                    SizedBox(height: Responsive.spacing(context, mobile: 16, tablet: 20, desktop: 24)),
+                    
+                    // Account Number
+                    TextFormField(
+                      controller: _accountNumberController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: 'Account Number *',
+                        hintText: 'Enter account number',
+                        prefixIcon: const Icon(Icons.account_circle),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey.shade50,
+                      ),
+                      validator: (value) => value?.isEmpty ?? true ? 'Please enter account number' : null,
+                    ),
+                    
+                    SizedBox(height: Responsive.spacing(context, mobile: 16, tablet: 20, desktop: 24)),
+                    
+                    // Screenshot
+                    InkWell(
+                      onTap: _pickScreenshot,
+                      child: Container(
+                        padding: EdgeInsets.all(Responsive.spacing(context, mobile: 16, tablet: 18, desktop: 20)),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade50,
+                          borderRadius: BorderRadius.circular(Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.image, color: Colors.grey.shade600),
+                            SizedBox(width: Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
+                            Expanded(
+                              child: Text(
+                                _screenshotBase64 != null ? 'Screenshot selected' : 'Upload Screenshot (Optional)',
+                                style: GoogleFonts.poppins(
+                                  fontSize: Responsive.fontSize(context, mobile: 16, tablet: 18, desktop: 20),
+                                  color: _screenshotBase64 != null ? Colors.green.shade700 : Colors.grey.shade600,
+                                ),
+                              ),
+                            ),
+                            if (_screenshotBase64 != null)
+                              Icon(Icons.check_circle, color: Colors.green.shade700),
+                          ],
+                        ),
+                      ),
+                    ),
+                    
+                    SizedBox(height: Responsive.spacing(context, mobile: 24, tablet: 28, desktop: 32)),
+                    
+                    // Submit Button
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _isSubmitting ? null : _submitPayment,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange.shade600,
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.symmetric(
+                            vertical: Responsive.spacing(context, mobile: 16, tablet: 18, desktop: 20),
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
+                          ),
+                          elevation: 4,
+                        ),
+                        child: _isSubmitting
+                            ? SizedBox(
+                                height: Responsive.spacing(context, mobile: 24, tablet: 28, desktop: 32),
+                                width: Responsive.spacing(context, mobile: 24, tablet: 28, desktop: 32),
+                                child: const CircularProgressIndicator(
+                                  strokeWidth: 3,
+                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                ),
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.send),
+                                  SizedBox(width: Responsive.spacing(context, mobile: 8, tablet: 10, desktop: 12)),
+                                  Text(
+                                    'Submit Payment',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: Responsive.fontSize(context, mobile: 16, tablet: 18, desktop: 20),
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          
+          SizedBox(height: MediaQuery.of(context).padding.bottom),
+        ],
+      ),
+    );
+  }
+}
+

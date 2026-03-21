@@ -2,11 +2,15 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'dart:async';
 import 'dart:convert';
 import '../config/api_config.dart';
 import 'auth_service.dart';
+import 'overlay_lock_service.dart';
+import 'user_location_service.dart';
+import 'sim_details_service.dart';
+import '../utils/api_client.dart';
 
 class FCMService {
   static const String _tokenKey = 'fcm_token';
@@ -101,19 +105,25 @@ class FCMService {
       // Check if app opened from notification (when app was closed)
       RemoteMessage? initialMessage = await _messaging.getInitialMessage();
       if (initialMessage != null) {
-        debugPrint('[FCM] ========== APP OPENED FROM NOTIFICATION ==========');
+        debugPrint('[FCM] ========== APP OPENED FROM NOTIFICATION (INITIAL MESSAGE) ==========');
         debugPrint('[FCM] Initial message: ${initialMessage.messageId}');
         debugPrint('[FCM] Message data: ${initialMessage.data}');
         
-        // Handle message
+        // Handle message immediately
         _handleMessage(initialMessage);
         
         // For lock commands, ensure overlay shows after app fully loads
         final data = initialMessage.data;
         if (data.containsKey('type') && data['type'] == 'lock_command') {
-          debugPrint('[FCM] Lock command in initial message, will show overlay after app loads');
+          debugPrint('[FCM] ========== LOCK COMMAND - APP OPENED FROM NOTIFICATION ==========');
+          debugPrint('[FCM] Will show overlay automatically when app loads...');
           // Wait for app to fully initialize, then trigger overlay
+          // Try multiple times to ensure overlay shows
           Future.delayed(const Duration(milliseconds: 1000), () {
+            onLockCommand?.call(data);
+          });
+          Future.delayed(const Duration(milliseconds: 2000), () {
+            // Retry after longer delay to ensure overlay shows
             onLockCommand?.call(data);
           });
         }
@@ -185,13 +195,14 @@ class FCMService {
       debugPrint('[FCM_REGISTRATION] Request Body: $requestBody');
       debugPrint('[FCM_REGISTRATION] Sending POST request...');
       
-      final response = await http.post(
+      final response = await ApiClient.post(
         uri,
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $authToken',
         },
         body: requestBody,
+        timeout: const Duration(seconds: 10),
       );
       
       debugPrint('[FCM_REGISTRATION] Response Status Code: ${response.statusCode}');
@@ -207,6 +218,31 @@ class FCMService {
             final data = responseData['data'] as Map<String, dynamic>?;
             if (data != null && data.containsKey('fcmToken')) {
               debugPrint('[FCM_REGISTRATION] Registered Token: ${data['fcmToken']}');
+            }
+            
+            // CRITICAL: Sync deviceLocked status from backend
+            if (data != null && data.containsKey('deviceLocked')) {
+              final backendDeviceLocked = data['deviceLocked'] as bool? ?? false;
+              debugPrint('[FCM_REGISTRATION] Backend deviceLocked status: $backendDeviceLocked');
+              
+              // If backend says device is unlocked, unlock locally
+              if (!backendDeviceLocked) {
+                debugPrint('[FCM_REGISTRATION] ⚠️ Backend says device is UNLOCKED - syncing local status');
+                debugPrint('[FCM_REGISTRATION] Unlocking device locally...');
+                
+                // Unlock device using overlay lock service
+                await OverlayLockService.unlockDevice();
+                
+                // Clear FCM service lock status
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setBool(_lockStatusKey, false);
+                await prefs.remove(_lockEmiIdKey);
+                await prefs.remove(_unlockUntilKey);
+                
+                debugPrint('[FCM_REGISTRATION] ✅ Device unlocked locally - overlay should be hidden');
+              } else {
+                debugPrint('[FCM_REGISTRATION] Backend says device is LOCKED - keeping local lock status');
+              }
             }
           }
         } catch (e) {
@@ -229,6 +265,9 @@ class FCMService {
       }
       
       debugPrint('[FCM_REGISTRATION] ========== TOKEN REGISTRATION COMPLETE ==========');
+    } on ApiException catch (e) {
+      debugPrint('[FCM_REGISTRATION] ❌ API EXCEPTION: ${e.message}');
+      debugPrint('[FCM_REGISTRATION] Error Type: ${e.type}');
     } catch (e, stackTrace) {
       debugPrint('[FCM_REGISTRATION] ❌ EXCEPTION: Error registering token to backend');
       debugPrint('[FCM_REGISTRATION] Error: $e');
@@ -327,10 +366,15 @@ class FCMService {
     // For lock commands, ensure overlay shows after app opens
     final data = message.data;
     if (data.containsKey('type') && data['type'] == 'lock_command') {
-      debugPrint('[FCM] Lock command detected, will show overlay when app opens');
+      debugPrint('[FCM] ========== LOCK COMMAND - APP OPENED FROM NOTIFICATION ==========');
+      debugPrint('[FCM] Will show overlay automatically when app loads...');
       // The overlay will be shown by AppOverlayService when context is available
-      // We'll trigger it after a short delay to ensure app is fully loaded
+      // Try multiple times to ensure overlay shows even if context takes time
       Future.delayed(const Duration(milliseconds: 500), () {
+        onLockCommand?.call(data);
+      });
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        // Retry after longer delay to ensure overlay shows
         onLockCommand?.call(data);
       });
     }
@@ -360,26 +404,81 @@ class FCMService {
         case 'extend_payment':
           _handleExtendPayment(data);
           break;
+        case 'get_location_command':
+          _handleGetLocationCommand(data);
+          break;
+        case 'get_sim_details_command':
+          _handleGetSimDetailsCommand(data);
+          break;
         default:
           debugPrint('[FCM] Unknown message type: $type');
       }
     }
   }
+
+  /// When FCM type=get_location_command: get current location and POST to /user-locations
+  void _handleGetLocationCommand(Map<String, dynamic> data) async {
+    debugPrint('[FCM] ========== GET LOCATION COMMAND RECEIVED ==========');
+    try {
+      final sent = await UserLocationService.fetchAndSendLocation();
+      debugPrint('[FCM] get_location_command result: ${sent ? "OK" : "failed"}');
+    } catch (e, st) {
+      debugPrint('[FCM] ❌ get_location_command error: $e');
+      debugPrint('[FCM] $st');
+    }
+  }
+
+  /// When FCM type=get_sim_details_command: post SIM details to /device-sim-details
+  void _handleGetSimDetailsCommand(Map<String, dynamic> data) async {
+    debugPrint('[FCM] ========== GET SIM DETAILS COMMAND RECEIVED ==========');
+    try {
+      final sent = await SimDetailsService.postSimDetailsIfAllowed();
+      debugPrint('[FCM] get_sim_details_command result: ${sent ? "OK" : "failed"}');
+    } catch (e, st) {
+      debugPrint('[FCM] ❌ get_sim_details_command error: $e');
+      debugPrint('[FCM] $st');
+    }
+  }
   
   /// Handle lock command
   void _handleLockCommand(Map<String, dynamic> data) async {
-    debugPrint('[FCM] Lock command received');
+    debugPrint('[FCM] ========== LOCK COMMAND RECEIVED ==========');
+    debugPrint('[FCM] Lock command data: $data');
     
-    // Store lock status
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_lockStatusKey, true);
-    
-    if (data.containsKey('emiId')) {
-      await prefs.setString(_lockEmiIdKey, data['emiId'] as String);
+    try {
+      // Extract message and amount from FCM data
+      final message = data['message'] as String? ?? 
+                     data['reason'] as String? ?? 
+                     'Your EMI is overdue. Please contact shopkeeper.';
+      final amount = data['amount'] as String? ?? 
+                    data['overdueAmount']?.toString() ?? 
+                    '0';
+      
+      debugPrint('[FCM] Lock message: $message');
+      debugPrint('[FCM] Lock amount: $amount');
+      
+      // Lock device using overlay lock service
+      await OverlayLockService.lockDevice(
+        message: message,
+        amount: amount,
+      );
+      
+      // Store lock status in FCM service too (for compatibility)
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_lockStatusKey, true);
+      
+      if (data.containsKey('emiId')) {
+        await prefs.setString(_lockEmiIdKey, data['emiId'] as String);
+      }
+      
+      // Also notify callback if set (for backward compatibility)
+      onLockCommand?.call(data);
+      
+      debugPrint('[FCM] ✅ Lock command processed successfully');
+    } catch (e, stackTrace) {
+      debugPrint('[FCM] ❌ EXCEPTION: Error handling lock command: $e');
+      debugPrint('[FCM] Stack Trace: $stackTrace');
     }
-    
-    // Notify overlay service
-    onLockCommand?.call(data);
   }
   
   /// Handle unlock command
@@ -388,21 +487,30 @@ class FCMService {
     debugPrint('[FCM] Unlock command data: $data');
     
     try {
-      // Clear lock status
+      // CRITICAL: Unlock device using overlay lock service FIRST
+      // This will hide the overlay and clear lock status
+      await OverlayLockService.unlockDevice();
+      debugPrint('[FCM] ✅ OverlayLockService.unlockDevice() called');
+      
+      // Clear lock status in FCM service
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_lockStatusKey, false);
       await prefs.remove(_lockEmiIdKey);
       await prefs.remove(_unlockUntilKey);
       debugPrint('[FCM] ✅ Lock status cleared in FCM service');
       
-      // Notify overlay service immediately
+      // Also notify callback if set (for backward compatibility)
+      // But don't rely on it - OverlayLockService.unlockDevice() already handles it
       debugPrint('[FCM] Calling onUnlockCommand callback...');
       if (onUnlockCommand != null) {
         onUnlockCommand!(data);
         debugPrint('[FCM] ✅ Unlock callback called');
       } else {
         debugPrint('[FCM] ⚠️ WARNING: onUnlockCommand callback is null!');
+        debugPrint('[FCM] ⚠️ But this is OK - OverlayLockService.unlockDevice() already handled unlock');
       }
+      
+      debugPrint('[FCM] ✅ Unlock command processed successfully');
     } catch (e, stackTrace) {
       debugPrint('[FCM] ❌ EXCEPTION: Error handling unlock command: $e');
       debugPrint('[FCM] Stack Trace: $stackTrace');
@@ -411,29 +519,40 @@ class FCMService {
   
   /// Handle extend payment command
   void _handleExtendPayment(Map<String, dynamic> data) async {
-    debugPrint('[FCM] Extend payment command received');
+    debugPrint('[FCM] ========== EXTEND PAYMENT COMMAND RECEIVED ==========');
+    debugPrint('[FCM] Extend payment data: $data');
     
-    final prefs = await SharedPreferences.getInstance();
-    
-    // Calculate unlock until date
-    int? days;
-    if (data.containsKey('days')) {
-      days = (data['days'] as num?)?.toInt();
-    } else if (data.containsKey('extendDays')) {
-      days = (data['extendDays'] as num?)?.toInt();
+    try {
+      // Temporarily unlock device
+      await OverlayLockService.unlockDevice();
+      
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Calculate unlock until date
+      int? days;
+      if (data.containsKey('days')) {
+        days = (data['days'] as num?)?.toInt();
+      } else if (data.containsKey('extendDays')) {
+        days = (data['extendDays'] as num?)?.toInt();
+      }
+      
+      if (days != null && days > 0) {
+        final unlockUntil = DateTime.now().add(Duration(days: days));
+        await prefs.setString(_unlockUntilKey, unlockUntil.toIso8601String());
+        debugPrint('[FCM] Device unlocked until: $unlockUntil');
+      }
+      
+      // Temporarily unlock in FCM service
+      await prefs.setBool(_lockStatusKey, false);
+      
+      // Notify callback
+      onUnlockCommand?.call(data);
+      
+      debugPrint('[FCM] ✅ Extend payment command processed successfully');
+    } catch (e, stackTrace) {
+      debugPrint('[FCM] ❌ EXCEPTION: Error handling extend payment: $e');
+      debugPrint('[FCM] Stack Trace: $stackTrace');
     }
-    
-    if (days != null && days > 0) {
-      final unlockUntil = DateTime.now().add(Duration(days: days));
-      await prefs.setString(_unlockUntilKey, unlockUntil.toIso8601String());
-      debugPrint('[FCM] Device unlocked until: $unlockUntil');
-    }
-    
-    // Temporarily unlock
-    await prefs.setBool(_lockStatusKey, false);
-    
-    // Notify overlay service
-    onUnlockCommand?.call(data);
   }
   
   /// Check if device is locked
@@ -473,14 +592,26 @@ class FCMService {
   
   /// Manually unlock device (e.g., after payment verification)
   Future<void> unlockDevice() async {
-    debugPrint('[FCM] Manually unlocking device');
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_lockStatusKey, false);
-    await prefs.remove(_lockEmiIdKey);
-    await prefs.remove(_unlockUntilKey);
+    debugPrint('[FCM] ========== MANUALLY UNLOCKING DEVICE ==========');
     
-    // Notify overlay service
-    onUnlockCommand?.call({'type': 'unlock_command', 'reason': 'payment_verified'});
+    try {
+      // Unlock using overlay lock service
+      await OverlayLockService.unlockDevice();
+      
+      // Clear FCM service lock status
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_lockStatusKey, false);
+      await prefs.remove(_lockEmiIdKey);
+      await prefs.remove(_unlockUntilKey);
+      
+      // Notify callback
+      onUnlockCommand?.call({'type': 'unlock_command', 'reason': 'payment_verified'});
+      
+      debugPrint('[FCM] ✅ Device manually unlocked successfully');
+    } catch (e, stackTrace) {
+      debugPrint('[FCM] ❌ EXCEPTION: Error manually unlocking device: $e');
+      debugPrint('[FCM] Stack Trace: $stackTrace');
+    }
   }
   
   /// Register FCM token after login (public method)

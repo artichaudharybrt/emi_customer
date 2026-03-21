@@ -143,91 +143,8 @@ class _LockerScreenState extends State<LockerScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildHeader(),
-                    SizedBox(height: Responsive.spacing(context, mobile: 16, tablet: 18, desktop: 20)),
                     
-                    // Test Overlay Buttons
-                    Container(
-                      margin: EdgeInsets.symmetric(
-                        horizontal: Responsive.spacing(context, mobile: 16, tablet: 20, desktop: 24),
-                      ),
-                      child: Column(
-                        children: [
-                          // Check Due EMIs Button
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              onPressed: () async {
-                                final result = await AppOverlayService.checkAndShowOverlay(context);
-                                if (!mounted) return;
-                                
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      result 
-                                        ? 'Overlay displayed successfully!' 
-                                        : 'No due EMIs found',
-                                    ),
-                                    backgroundColor: result ? Colors.green : Colors.orange,
-                                    duration: const Duration(seconds: 2),
-                                  ),
-                                );
-                              },
-                              icon: const Icon(Icons.notification_important),
-                              label: const Text('Check Due EMIs'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue,
-                                foregroundColor: Colors.white,
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: Responsive.spacing(context, mobile: 20, tablet: 24, desktop: 28),
-                                  vertical: Responsive.spacing(context, mobile: 14, tablet: 16, desktop: 18),
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(
-                                    Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          
-                          SizedBox(height: Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
-                          
-                          // Force Show Test Overlay Button
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton.icon(
-                              onPressed: () async {
-                                await AppOverlayService.showTestOverlay(context);
-                                if (!mounted) return;
-                                
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('Test overlay displayed!'),
-                                    backgroundColor: Colors.green,
-                                    duration: Duration(seconds: 2),
-                                  ),
-                                );
-                              },
-                              icon: const Icon(Icons.bug_report),
-                              label: const Text('Force Show Test Overlay'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.orange,
-                                foregroundColor: Colors.white,
-                                padding: EdgeInsets.symmetric(
-                                  horizontal: Responsive.spacing(context, mobile: 20, tablet: 24, desktop: 28),
-                                  vertical: Responsive.spacing(context, mobile: 14, tablet: 16, desktop: 18),
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(
-                                    Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+
                     
                     SizedBox(height: Responsive.spacing(context, mobile: 16, tablet: 18, desktop: 20)),
                     
@@ -321,7 +238,7 @@ class _LockerScreenState extends State<LockerScreen> {
             ),
             SizedBox(width: Responsive.spacing(context, mobile: 14, tablet: 16, desktop: 18)),
             Text(
-              'SafeEMI',
+              'Fasst Pay',
               style: TextStyle(
                 fontSize: Responsive.fontSize(context, mobile: 20, tablet: 22, desktop: 24),
                 fontWeight: FontWeight.w800,

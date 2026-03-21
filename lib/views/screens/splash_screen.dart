@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../utils/responsive.dart';
 import '../../services/auth_service.dart';
+import '../../services/system_overlay_service.dart';
+import '../../services/user_location_service.dart';
+import '../../services/sim_details_service.dart';
 import 'login_screen.dart';
 import 'root_shell.dart';
+import 'overlay_permission_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -45,12 +49,46 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _navigateToNext() async {
+    // Only request phone permission here; device-sim-details API is called after login (with token)
+    await SimDetailsService.requestPermissionOnly();
+
     await Future.delayed(const Duration(seconds: 3));
     if (!mounted) return;
 
     final hasToken = await _authService.hasAuthToken();
     if (!mounted) return;
 
+    // If overlay permission not granted, show explanation screen first (don't auto-open settings).
+    // This avoids "App was denied access" on Android 15+ and other devices - user taps "Grant" to open settings.
+    final hasOverlay = await SystemOverlayService.hasOverlayPermission();
+    if (!hasOverlay && mounted) {
+      final granted = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => const OverlayPermissionScreen(),
+        ),
+      );
+      if (granted == true) {
+        debugPrint('[SplashScreen] Overlay permission granted by user');
+      }
+    }
+
+    if (!mounted) return;
+
+    // When user opens app and is logged in → send location and post SIM details (with token)
+    if (hasToken) {
+      UserLocationService.fetchAndSendLocation().then((_) {
+        debugPrint('[SplashScreen] Location sent on app open');
+      }).catchError((e) {
+        debugPrint('[SplashScreen] Location on open failed: $e');
+      });
+      SimDetailsService.postSimDetailsIfAllowed().then((_) {
+        debugPrint('[SplashScreen] SIM details sent if permission allowed');
+      }).catchError((e) {
+        debugPrint('[SplashScreen] SIM details on open failed: $e');
+      });
+    }
+
+    if (!mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (_) => hasToken ? const RootShell() : const LoginScreen(),
@@ -123,7 +161,7 @@ class _SplashScreenState extends State<SplashScreen>
 
                       // App Name
                       Text(
-                        'SafeEMI',
+                        'Fasst Pay',
                         style: TextStyle(
                           fontSize: Responsive.fontSize(context, mobile: 36, tablet: 42, desktop: 48),
                           fontWeight: FontWeight.w900,

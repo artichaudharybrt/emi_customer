@@ -173,7 +173,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           SizedBox(width: Responsive.spacing(context, mobile: 14, tablet: 16, desktop: 18)),
           Text(
-            'SafeEMI',
+            'Fasst Pay',
             style: TextStyle(
               fontSize: Responsive.fontSize(context, mobile: 20, tablet: 22, desktop: 24),
               fontWeight: FontWeight.w800,
@@ -181,34 +181,11 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const Spacer(),
-          IconButton(
-            tooltip: 'Logout',
-            icon: const Icon(Icons.logout),
-            onPressed: () => _handleLogout(context),
-          ),
+          // Logout button hidden
         ],
       ),
     );
   }
-
-  Future<void> _handleLogout(BuildContext context) async {
-    await _authService.logout();
-    if (!context.mounted) return;
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Logged out'),
-        backgroundColor: Colors.black87,
-        duration: Duration(seconds: 2),
-      ),
-    );
-
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginScreen()),
-      (_) => false,
-    );
-  }
-
 
   // ------------------------------------------------------------
   // SEARCH BAR

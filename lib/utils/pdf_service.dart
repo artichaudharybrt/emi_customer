@@ -117,16 +117,16 @@ class PdfService {
       documentsDir = await getApplicationDocumentsDirectory();
     }
 
-    // Create SafeEMI subfolder in Documents
-    final safeEmiDir = Directory('${documentsDir!.path}/SafeEMI');
-    if (!await safeEmiDir.exists()) {
-      await safeEmiDir.create(recursive: true);
+    // Create Fasst Pay subfolder in Documents
+    final fasstPayDir = Directory('${documentsDir!.path}/Fasst Pay');
+    if (!await fasstPayDir.exists()) {
+      await fasstPayDir.create(recursive: true);
     }
 
     // Generate filename with timestamp
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final fileName = 'EMI_Statement_${emiId}_$timestamp.pdf';
-    final file = File('${safeEmiDir.path}/$fileName');
+    final file = File('${fasstPayDir.path}/$fileName');
 
     await file.writeAsBytes(await pdf.save());
     

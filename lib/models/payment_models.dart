@@ -180,4 +180,145 @@ class PendingPaymentResponse {
   }
 }
 
+// QR Code Payment Models
+class QrCodeResponse {
+  final bool success;
+  final String message;
+  final QrCodeData data;
+
+  QrCodeResponse({
+    required this.success,
+    required this.message,
+    required this.data,
+  });
+
+  factory QrCodeResponse.fromJson(Map<String, dynamic> json) {
+    final dataJson = json['data'] as Map<String, dynamic>? ?? {};
+    return QrCodeResponse(
+      success: json['success'] as bool? ?? false,
+      message: json['message'] as String? ?? '',
+      data: QrCodeData.fromJson(dataJson),
+    );
+  }
+}
+
+class QrCodeData {
+  final String qrCodeImage; // base64 encoded image
+  final String upiId;
+  final double amount;
+  final String emiPaymentId;
+
+  QrCodeData({
+    required this.qrCodeImage,
+    required this.upiId,
+    required this.amount,
+    required this.emiPaymentId,
+  });
+
+  factory QrCodeData.fromJson(Map<String, dynamic> json) {
+    return QrCodeData(
+      qrCodeImage: json['qrCodeImage'] as String? ?? '',
+      upiId: json['upiId'] as String? ?? '',
+      amount: (json['amount'] as num?)?.toDouble() ?? 0.0,
+      emiPaymentId: json['emiPaymentId'] as String? ?? '',
+    );
+  }
+}
+
+// Payment Verification Response
+class PaymentVerificationResponse {
+  final bool success;
+  final String message;
+  final Map<String, dynamic>? data;
+
+  PaymentVerificationResponse({
+    required this.success,
+    required this.message,
+    this.data,
+  });
+
+  factory PaymentVerificationResponse.fromJson(Map<String, dynamic> json) {
+    return PaymentVerificationResponse(
+      success: json['success'] as bool? ?? false,
+      message: json['message'] as String? ?? '',
+      data: json['data'] as Map<String, dynamic>?,
+    );
+  }
+}
+
+// Razorpay Order Response
+class RazorpayOrderResponse {
+  final bool success;
+  final String message;
+  final RazorpayOrderData data;
+
+  RazorpayOrderResponse({
+    required this.success,
+    required this.message,
+    required this.data,
+  });
+
+  factory RazorpayOrderResponse.fromJson(Map<String, dynamic> json) {
+    final dataJson = json['data'] as Map<String, dynamic>? ?? {};
+    return RazorpayOrderResponse(
+      success: json['success'] as bool? ?? false,
+      message: json['message'] as String? ?? '',
+      data: RazorpayOrderData.fromJson(dataJson),
+    );
+  }
+}
+
+class RazorpayOrderData {
+  final String orderId;
+  final String? packageId;
+  final String? keyId;
+  final double amount;
+  final String currency;
+
+  RazorpayOrderData({
+    required this.orderId,
+    this.packageId,
+    this.keyId,
+    required this.amount,
+    required this.currency,
+  });
+
+  factory RazorpayOrderData.fromJson(Map<String, dynamic> json) {
+    // Parse order object if it exists (new API format)
+    final orderJson = json['order'] as Map<String, dynamic>?;
+    
+    String orderId = '';
+    double amount = 0.0;
+    String currency = 'INR';
+    
+    if (orderJson != null) {
+      // New API format: order is nested
+      orderId = orderJson['id'] as String? ?? '';
+      // Amount in paise, convert to rupees
+      final amountInPaise = (orderJson['amount'] as num?)?.toInt() ?? 0;
+      amount = amountInPaise / 100.0;
+      currency = orderJson['currency'] as String? ?? 'INR';
+    } else {
+      // Old API format: direct fields
+      orderId = json['orderId'] as String? ?? 
+                json['razorpay_order_id'] as String? ?? '';
+      amount = (json['amount'] as num?)?.toDouble() ?? 0.0;
+      currency = json['currency'] as String? ?? 'INR';
+    }
+    
+    // If amount is still 0, try to get from top level
+    if (amount == 0.0) {
+      amount = (json['amount'] as num?)?.toDouble() ?? 0.0;
+    }
+    
+    return RazorpayOrderData(
+      orderId: orderId,
+      packageId: json['packageId'] as String?,
+      keyId: json['keyId'] as String?,
+      amount: amount,
+      currency: currency,
+    );
+  }
+}
+
 

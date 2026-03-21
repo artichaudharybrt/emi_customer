@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:emilockercustomer/views/screens/splash_screen.dart';
 import 'package:emilockercustomer/services/notification_service.dart';
-import 'package:emilockercustomer/services/app_overlay_service.dart';
 import 'package:emilockercustomer/services/fcm_service.dart';
+import 'package:emilockercustomer/services/overlay_lock_service.dart';
 import 'package:emilockercustomer/services/fcm_background_handler.dart';
+import 'package:emilockercustomer/services/app_overlay_service.dart';
+import 'package:emilockercustomer/services/overlay_permission_monitor_service.dart';
+import 'package:emilockercustomer/services/auth_service.dart';
+import 'package:emilockercustomer/services/user_location_service.dart';
+import 'package:flutter/foundation.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,12 +37,33 @@ void main() async {
     print('[Main] FCM Service initialization error: $e');
   }
   
+  // Initialize Overlay Lock Service
+  try {
+    await OverlayLockService.initialize();
+    print('[Main] Overlay Lock Service initialized successfully');
+  } catch (e) {
+    print('[Main] Overlay Lock Service initialization error: $e');
+  }
+  
   // Process any pending FCM commands
   await processPendingFcmCommands();
   
   // Initialize notification service
   await NotificationService.initialize();
   
+  // Start overlay permission monitoring
+  try {
+    await OverlayPermissionMonitorService.startMonitoring();
+    print('[Main] Overlay Permission Monitor started successfully');
+  } catch (e) {
+    print('[Main] Overlay Permission Monitor initialization error: $e');
+  }
+  
+  // Choose between original app and locker wrapper
+  // Uncomment the line below to use the enhanced locker functionality
+  // runApp(LockerAppWrapper());
+  
+  // Original app (comment out the line above to use this)
   runApp(MyApp(fcmService: fcmService));
 }
 
@@ -53,6 +80,8 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  static DateTime? _lastLocationSentOnResume;
+
   @override
   void initState() {
     super.initState();
@@ -69,15 +98,34 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     
-    // Check for overlay when app comes to foreground
+    // When app opens / comes to foreground → send location if logged in
     if (state == AppLifecycleState.resumed) {
-      debugPrint('[Main] App resumed, checking for overlay...');
+      debugPrint('[Main] App resumed, checking if overlay should be shown...');
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          // Update context first
-          AppOverlayService.updateContext(context);
-          // Then check for overlay
-          AppOverlayService.checkOnAppStart(context);
+          // Check if device is locked and show overlay if needed
+          OverlayLockService.isDeviceLocked().then((isLocked) {
+            if (isLocked) {
+              debugPrint('[Main] Device is locked - overlay should be showing');
+            } else {
+              debugPrint('[Main] Device is not locked');
+            }
+          });
+          // Send location when user opens app (throttle: once per 30 sec)
+          final now = DateTime.now();
+          if (_lastLocationSentOnResume == null ||
+              now.difference(_lastLocationSentOnResume!).inSeconds >= 30) {
+            AuthService().hasAuthToken().then((hasToken) {
+              if (hasToken) {
+                _lastLocationSentOnResume = now;
+                UserLocationService.fetchAndSendLocation().then((_) {
+                  debugPrint('[Main] Location sent on app resume');
+                }).catchError((e) {
+                  debugPrint('[Main] Location on resume failed: $e');
+                });
+              }
+            });
+          }
         }
       });
     }
@@ -97,49 +145,48 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         ),
         home: const SplashScreen(),
       builder: (context, child) {
-        // Initialize overlay service with overlay state and FCM service
+        // Initialize AppOverlayService when MaterialApp is built
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          final overlayState = Overlay.of(context);
-          AppOverlayService.initialize(overlayState, fcmService: widget.fcmService, context: context);
-          
-          // Update context when app builds
-          AppOverlayService.updateContext(context);
-          
-          // Check for overlay on app start (with delay to ensure app is fully loaded)
-          Future.delayed(const Duration(milliseconds: 500), () {
+          if (context.mounted) {
+            try {
+              final overlayState = Overlay.of(context);
+              AppOverlayService.initialize(
+                overlayState,
+                fcmService: widget.fcmService,
+                context: context,
+              );
+              debugPrint('[Main] ✅ AppOverlayService initialized with FCM service');
+            } catch (e) {
+              debugPrint('[Main] ⚠️ Error initializing AppOverlayService: $e');
+            }
+          }
+        });
+        
+        // Check if overlay should be shown on app start (for notification auto-open)
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          Future.delayed(const Duration(milliseconds: 1000), () {
             if (context.mounted) {
-              AppOverlayService.checkOnAppStart(context);
+              // Check if device is locked and show overlay automatically
+              OverlayLockService.isDeviceLocked().then((isLocked) {
+                if (isLocked) {
+                  debugPrint('[Main] ========== DEVICE IS LOCKED ON APP START ==========');
+                  debugPrint('[Main] Notification opened app - showing overlay automatically...');
+                  // Use navigatorKey to get context and show overlay
+                  final navigatorContext = navigatorKey.currentContext;
+                  if (navigatorContext != null && navigatorContext.mounted) {
+                    AppOverlayService.checkAndShowOverlay(navigatorContext);
+                  } else {
+                    debugPrint('[Main] ⚠️ Navigator context not available yet, overlay will show when RootShell loads');
+                  }
+                } else {
+                  debugPrint('[Main] Device is not locked on app start');
+                }
+              });
             }
           });
         });
         
-        // Wrap child in PopScope to block back button when overlay is showing
-        return PopScope(
-          canPop: false, // Block back button - will check overlay state
-          onPopInvokedWithResult: (bool didPop, dynamic result) async {
-            if (didPop) {
-              // Back button was pressed, check if overlay is showing
-              final isOverlayShowing = await AppOverlayService.isOverlayShowing();
-              if (isOverlayShowing) {
-                debugPrint('[Main] ========== BACK BUTTON PRESSED - OVERLAY IS SHOWING ==========');
-                debugPrint('[Main] Back button BLOCKED - overlay cannot be dismissed');
-                debugPrint('[Main] Overlay can only be removed by payment or unlock command');
-                // Re-insert overlay if it was removed
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  AppOverlayService.checkOnAppStart(context);
-                });
-              } else {
-                // Overlay not showing, allow normal back button
-                debugPrint('[Main] Overlay not showing, allowing normal back button');
-                // Allow app to close normally
-                if (navigatorKey.currentState?.canPop() ?? false) {
-                  navigatorKey.currentState?.pop();
-                }
-              }
-            }
-          },
-          child: child ?? const SizedBox(),
-        );
+        return child ?? const SizedBox();
       },
     );
   }

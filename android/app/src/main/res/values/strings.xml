@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Fasst Pay</string>
+    <string name="accessibility_service_description">Fasst Pay Protection Service - Monitors app usage to prevent unauthorized modifications during EMI period. This service ensures loan security and compliance with your EMI agreement.</string>
+</resources>

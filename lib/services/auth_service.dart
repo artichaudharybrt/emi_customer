@@ -1,10 +1,10 @@
 import 'dart:convert';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/api_config.dart';
 import '../models/home_models.dart';
+import '../utils/api_client.dart';
 
 class AuthService {
   static const String _authTokenKey = 'auth_token';
@@ -24,34 +24,38 @@ class AuthService {
     required String emailOrMobile,
     required String password,
   }) async {
-    final response = await http.post(
-      Uri.parse(ApiConfig.login),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'emailOrMobile': emailOrMobile,
-        'password': password,
-      }),
-    );
-
-    Map<String, dynamic> payload = {};
     try {
-      payload = jsonDecode(response.body) as Map<String, dynamic>;
-    } catch (_) {
-      // Non-JSON response; keep payload empty for messaging below.
-    }
+      final response = await ApiClient.post(
+        Uri.parse(ApiConfig.login),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'emailOrMobile': emailOrMobile,
+          'password': password,
+        }),
+      );
 
-    if (response.statusCode == 200 || response.statusCode == 201) {
-      final token = _extractToken(payload);
-      if (token == null || token.isEmpty) {
-        throw Exception('Login succeeded but no token returned');
+      Map<String, dynamic> payload = {};
+      try {
+        payload = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {
+        throw Exception('Invalid response format');
       }
 
-      await _storeAuthToken(token);
-      return token;
-    }
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final token = _extractToken(payload);
+        if (token == null || token.isEmpty) {
+          throw Exception('Login succeeded but no token returned');
+        }
 
-    final message = payload['message'] ?? 'Login failed (${response.statusCode})';
-    throw Exception(message.toString());
+        await _storeAuthToken(token);
+        return token;
+      }
+
+      final message = payload['message'] ?? 'Login failed (${response.statusCode})';
+      throw Exception(message.toString());
+    } on ApiException catch (e) {
+      throw Exception(e.message);
+    }
   }
 
   String? _extractToken(Map<String, dynamic> payload) {
@@ -225,27 +229,31 @@ class AuthService {
       throw Exception('Authentication required. Please login first.');
     }
 
-    final response = await http.get(
-      Uri.parse(ApiConfig.userProfile),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-    );
-
-    Map<String, dynamic> payload = {};
     try {
-      payload = jsonDecode(response.body) as Map<String, dynamic>;
-    } catch (_) {
-      throw Exception('Invalid response format');
-    }
+      final response = await ApiClient.get(
+        Uri.parse(ApiConfig.userProfile),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
 
-    if (response.statusCode == 200 || response.statusCode == 201) {
-      return UserProfileResponse.fromJson(payload);
-    }
+      Map<String, dynamic> payload = {};
+      try {
+        payload = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {
+        throw Exception('Invalid response format');
+      }
 
-    final message = payload['message'] ?? 'Failed to fetch profile (${response.statusCode})';
-    throw Exception(message.toString());
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return UserProfileResponse.fromJson(payload);
+      }
+
+      final message = payload['message'] ?? 'Failed to fetch profile (${response.statusCode})';
+      throw Exception(message.toString());
+    } on ApiException catch (e) {
+      throw Exception(e.message);
+    }
   }
 }
 

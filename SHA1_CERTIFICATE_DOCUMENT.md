@@ -6,7 +6,7 @@
 ## 📱 **App Information**
 
 - **Package Name**: `com.rohit.emilockercustomer`
-- **App Name**: SafeEMI / EMI Locker Customer
+- **App Name**: Fasst Pay / EMI Locker Customer
 - **Project**: emilockercustomer
 
 ---
@@ -241,6 +241,14 @@ com.rohit.emilockercustomer
 ---
 
 **End of Document**
+
+
+
+
+
+
+
+
 
 
 

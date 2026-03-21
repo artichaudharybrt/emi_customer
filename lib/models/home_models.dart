@@ -52,6 +52,7 @@ class UserProfile {
   final String? userKey;
   final bool isKeyActive;
   final bool isKeyExpired;
+  final bool deviceLocked;
   final DateTime? keyExpiryDate;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -66,6 +67,7 @@ class UserProfile {
     this.userKey,
     this.isKeyActive = false,
     this.isKeyExpired = false,
+    this.deviceLocked = false,
     this.keyExpiryDate,
     required this.createdAt,
     required this.updatedAt,
@@ -82,6 +84,7 @@ class UserProfile {
       userKey: json['userKey'] as String?,
       isKeyActive: json['isKeyActive'] as bool? ?? false,
       isKeyExpired: json['isKeyExpired'] as bool? ?? false,
+      deviceLocked: json['deviceLocked'] as bool? ?? false,
       keyExpiryDate: json['keyExpiryDate'] != null
           ? DateTime.parse(json['keyExpiryDate'] as String)
           : null,

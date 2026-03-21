@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../utils/responsive.dart';
 import '../../services/auth_service.dart';
 import '../../services/fcm_service.dart';
+import '../../services/user_location_service.dart';
+import '../../services/sim_details_service.dart';
 import 'root_shell.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -71,6 +73,19 @@ class _LoginScreenState extends State<LoginScreen> {
           print('[Login] ⚠️ Error registering FCM token: $e');
           // Don't block login if FCM registration fails
         }
+
+        // Send location to API after Google login (same as email login)
+        UserLocationService.fetchAndSendLocation().then((_) {
+          print('[Login] ✅ Location sent after Google login');
+        }).catchError((e) {
+          print('[Login] ⚠️ Location after Google login failed: $e');
+        });
+        // Post SIM details with token (user allowed permission on splash, now logged in)
+        SimDetailsService.postSimDetailsIfAllowed().then((ok) {
+          if (ok) print('[Login] ✅ SIM details sent after Google login');
+        }).catchError((e) {
+          print('[Login] ⚠️ SIM details after Google login failed: $e');
+        });
         
         // Show success message
         if (mounted) {
@@ -133,6 +148,19 @@ class _LoginScreenState extends State<LoginScreen> {
           print('[Login] ⚠️ Error registering FCM token: $e');
           // Don't block login if FCM registration fails
         }
+
+        // Send location to API after login (as requested)
+        UserLocationService.fetchAndSendLocation().then((_) {
+          print('[Login] ✅ Location sent after login');
+        }).catchError((e) {
+          print('[Login] ⚠️ Location after login failed: $e');
+        });
+        // Post SIM details with token (user allowed permission on splash, now logged in)
+        SimDetailsService.postSimDetailsIfAllowed().then((ok) {
+          if (ok) print('[Login] ✅ SIM details sent after login');
+        }).catchError((e) {
+          print('[Login] ⚠️ SIM details after login failed: $e');
+        });
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -229,7 +257,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   SizedBox(height: Responsive.spacing(context, mobile: 8, tablet: 10, desktop: 12)),
 
                   Text(
-                    'Sign in to continue to SafeEMI',
+                    'Sign in to continue to Fasst Pay',
                     style: TextStyle(
                       fontSize: Responsive.fontSize(context, mobile: 15, tablet: 16, desktop: 17),
                       color: Colors.black54,
