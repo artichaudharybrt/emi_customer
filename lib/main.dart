@@ -10,6 +10,7 @@ import 'package:emilockercustomer/services/fcm_background_handler.dart';
 import 'package:emilockercustomer/services/app_overlay_service.dart';
 import 'package:emilockercustomer/services/overlay_permission_monitor_service.dart';
 import 'package:emilockercustomer/services/auth_service.dart';
+import 'package:emilockercustomer/services/native_location_tracking_service.dart';
 import 'package:emilockercustomer/services/user_location_service.dart';
 import 'package:flutter/foundation.dart';
 
@@ -81,6 +82,37 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   static DateTime? _lastLocationSentOnResume;
+  bool _appOverlayServiceInitialized = false;
+
+  /// Overlay is under Navigator — MaterialApp.builder [context] has no Overlay ancestor.
+  void _initAppOverlayServiceOnce([int attempt = 0]) {
+    if (_appOverlayServiceInitialized) return;
+    if (attempt > 24) {
+      _appOverlayServiceInitialized = true; // stop scheduling retries on rebuild
+      debugPrint('[Main] ⚠️ AppOverlayService: overlay not available after retries');
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final overlayState = navigatorKey.currentState?.overlay;
+      final navContext = navigatorKey.currentContext;
+      if (overlayState != null && navContext != null && navContext.mounted) {
+        _appOverlayServiceInitialized = true;
+        try {
+          AppOverlayService.initialize(
+            overlayState,
+            fcmService: widget.fcmService,
+            context: navContext,
+          );
+          debugPrint('[Main] ✅ AppOverlayService initialized (navigator overlay)');
+        } catch (e) {
+          debugPrint('[Main] ⚠️ AppOverlayService init error: $e');
+        }
+      } else {
+        _initAppOverlayServiceOnce(attempt + 1);
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -117,6 +149,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               now.difference(_lastLocationSentOnResume!).inSeconds >= 30) {
             AuthService().hasAuthToken().then((hasToken) {
               if (hasToken) {
+                NativeLocationTrackingService.startIfPossible();
                 _lastLocationSentOnResume = now;
                 UserLocationService.fetchAndSendLocation().then((_) {
                   debugPrint('[Main] Location sent on app resume');
@@ -145,21 +178,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         ),
         home: const SplashScreen(),
       builder: (context, child) {
-        // Initialize AppOverlayService when MaterialApp is built
+        // Builder's context is ABOVE Navigator — Overlay.of(context) throws "No Overlay widget found".
+        // Use the navigator's overlay from navigatorKey after the first frame.
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (context.mounted) {
-            try {
-              final overlayState = Overlay.of(context);
-              AppOverlayService.initialize(
-                overlayState,
-                fcmService: widget.fcmService,
-                context: context,
-              );
-              debugPrint('[Main] ✅ AppOverlayService initialized with FCM service');
-            } catch (e) {
-              debugPrint('[Main] ⚠️ Error initializing AppOverlayService: $e');
-            }
-          }
+          _initAppOverlayServiceOnce();
         });
         
         // Check if overlay should be shown on app start (for notification auto-open)

@@ -5,9 +5,13 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.LocationManager
+import android.location.Location
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.Tasks
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import org.json.JSONObject
@@ -15,6 +19,7 @@ import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 /**
  * Firebase Cloud Messaging Service
@@ -198,7 +203,9 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     /**
-     * Prefer GPS so we get India coords. Network provider can return wrong location (e.g. California).
+     * 1) Cache from [LocationTrackingService] (foreground updates while logged in)
+     * 2) Fused single fix (timeout)
+     * 3) Last known GPS/network (often null/stale when app was never opened)
      */
     @Suppress("DEPRECATION")
     private fun getLastOrCurrentLocation(): Triple<Double, Double, Double>? {
@@ -207,6 +214,11 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
             Log.w(TAG, "get_location_command: No location permission")
             return null
         }
+        LocationTrackingService.readCachedLocation(this, 45 * 60 * 1000L)?.let {
+            Log.e(TAG, "get_location_command: Using tracking cache → lat=${it.first}, lng=${it.second}")
+            return it
+        }
+        fusedGetCurrentLocation()?.let { return it }
         val lm = getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
         // Try GPS first (real device in India → correct coords). Network often gives wrong location.
         val providers = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -229,6 +241,23 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         }
         Log.w(TAG, "get_location_command: No location from GPS or Network")
         return null
+    }
+
+    private fun fusedGetCurrentLocation(): Triple<Double, Double, Double>? {
+        return try {
+            val client = LocationServices.getFusedLocationProviderClient(applicationContext)
+            val task = client.getCurrentLocation(
+                Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+                null,
+            )
+            val loc: Location = Tasks.await(task, 18, TimeUnit.SECONDS) ?: return null
+            val acc = if (loc.hasAccuracy()) loc.accuracy.toDouble() else 0.0
+            Log.e(TAG, "get_location_command: Fused getCurrentLocation → lat=${loc.latitude}, lng=${loc.longitude}")
+            Triple(loc.latitude, loc.longitude, acc)
+        } catch (e: Exception) {
+            Log.w(TAG, "get_location_command: fused getCurrentLocation failed: ${e.message}")
+            null
+        }
     }
 
     private fun postUserLocation(authToken: String, body: JSONObject) {

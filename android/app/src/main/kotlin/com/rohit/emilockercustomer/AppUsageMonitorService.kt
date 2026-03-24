@@ -54,12 +54,17 @@ class AppUsageMonitorService : AccessibilityService() {
     private var lastOverlayTimeForClick: Long = 0
     private var lastSeenFasstPayTime: Long = 0
     private val FASST_PAY_RECENT_MS = 4000L
+    private var lastInstallerUninstallBlockTime: Long = 0
+    private val INSTALLER_UNINSTALL_DEBOUNCE_MS = 280L
+    /** Global BACK right after connect can close Flutter — skip handling briefly. */
+    private var protectionGraceUntilMs: Long = 0
     
     override fun onServiceConnected() {
         super.onServiceConnected()
         Log.e(TAG, "========== ✅ APP USAGE MONITOR SERVICE CONNECTED ==========")
         Log.e(TAG, "✅ Service is now active and monitoring events")
         isServiceEnabled = true
+        protectionGraceUntilMs = System.currentTimeMillis() + 4500L
         
         // Initialize WindowManager for direct overlay
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -102,7 +107,11 @@ class AppUsageMonitorService : AccessibilityService() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 if (intent?.action == ACTION_SHOW_TEST_OVERLAY) {
                     Log.e(TAG, "FasstPayOverlay: Test overlay requested via broadcast")
-                    showProtectionOverlay("Protection test", "If you see this, the protection overlay is working.")
+                    showProtectionOverlay(
+                        "Protection test",
+                        "If you see this, the protection overlay is working.",
+                        force = true
+                    )
                 }
             }
         }.also { receiver ->
@@ -134,6 +143,9 @@ class AppUsageMonitorService : AccessibilityService() {
     
     private fun handleAccessibilityEvent(event: AccessibilityEvent) {
         try {
+            if (System.currentTimeMillis() < protectionGraceUntilMs) {
+                return
+            }
             // Get event details
             val packageName = event.packageName?.toString()
             val className = event.className?.toString()
@@ -174,6 +186,19 @@ class AppUsageMonitorService : AccessibilityService() {
             
             updateLastSeenFasstPayIfVisible()
             
+            // Play Store / package installer uninstall dialogs for Fasst Pay
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                scanPackageInstallerOrPlayStoreUninstall()
+            }
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED && isUninstallRelatedPackage(packageName)) {
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    scanPackageInstallerOrPlayStoreUninstall()
+                }, 120)
+            }
+            if (isClickOrSelect && isUninstallRelatedPackage(packageName)) {
+                scanPackageInstallerOrPlayStoreUninstall()
+            }
+            
             if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
                 (packageName == "com.android.settings" || packageName == "com.miui.securitycenter" || packageName?.contains("settings") == true)) {
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
@@ -190,9 +215,117 @@ class AppUsageMonitorService : AccessibilityService() {
                     }, 150)
                 }
             }
+            
+            // Any click on Uninstall / OK inside uninstall flow for our app (all packages)
+            if (isClickOrSelect) {
+                checkForUninstallConfirmationClick(event)
+            }
 
         } catch (e: Exception) {
             Log.e(TAG, "Error handling accessibility event: ${e.message}", e)
+        }
+    }
+    
+    /** Play Store, OEM package installers, permission controller (some uninstall flows). */
+    private fun isUninstallRelatedPackage(pkg: String?): Boolean {
+        if (pkg == null) return false
+        val p = pkg.lowercase()
+        if (p.contains("packageinstaller")) return true
+        if (p.contains("finsky")) return true
+        if (p.contains("vending")) return true
+        if (p.contains("permissioncontroller")) return true
+        return false
+    }
+    
+    /**
+     * Block when system uninstall / Play Store uninstall UI shows Fasst Pay.
+     */
+    private fun scanPackageInstallerOrPlayStoreUninstall() {
+        try {
+            val ourKeys = listOf(
+                "Fasst Pay", "FasstPay", "fasst pay", "Fasst pay",
+                "EMI Locker", "Emi Locker", "emilockercustomer",
+                "com.rohit.emilockercustomer", "rohit.emilockercustomer"
+            )
+            val roots = mutableListOf<AccessibilityNodeInfo>()
+            rootInActiveWindow?.let { roots.add(it) }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                @Suppress("DEPRECATION")
+                val wins = windows
+                if (wins != null) {
+                    for (w in wins) {
+                        val r = w.root ?: continue
+                        if (roots.none { it == r }) roots.add(r)
+                    }
+                }
+            }
+            for (root in roots) {
+                val pkg = root.packageName?.toString() ?: continue
+                if (!isUninstallRelatedPackage(pkg)) continue
+                val ours = findNodesByText(root, ourKeys).isNotEmpty() || checkForFasstPayPackage(root)
+                if (!ours) continue
+                val now = System.currentTimeMillis()
+                if (now - lastInstallerUninstallBlockTime < INSTALLER_UNINSTALL_DEBOUNCE_MS) return
+                lastInstallerUninstallBlockTime = now
+                Log.e(TAG, "🚨 Uninstall UI ($pkg) for Fasst Pay — blocking")
+                blockImmediatelyAndShowOverlay(
+                    "Uninstall blocked",
+                    "Fasst Pay cannot be uninstalled during EMI period."
+                )
+                return
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "scanPackageInstallerOrPlayStoreUninstall: ${e.message}", e)
+        }
+    }
+    
+    /**
+     * Block Uninstall / OK / Yes taps when dialog is for our app (installer, Play Store, Settings).
+     */
+    private fun checkForUninstallConfirmationClick(event: AccessibilityEvent) {
+        try {
+            val clicked = (event.text?.toString() ?: "") + (event.contentDescription?.toString() ?: "")
+            val strongUninstall = listOf("Uninstall", "uninstall", "REMOVE", "Remove", "Delete", "हटाए", "अनइंस्टॉल")
+            val okYes = listOf("OK", "Ok", "yes", "Yes")
+            val pkgEvent = event.packageName?.toString() ?: ""
+            val fromInstaller = isUninstallRelatedPackage(pkgEvent)
+            val fromSettingsFlow = pkgEvent.contains("settings", ignoreCase = true) ||
+                pkgEvent.contains("securitycenter", ignoreCase = true)
+            val clickedStrong = strongUninstall.any { clicked.contains(it, ignoreCase = true) } ||
+                nodeOrDescendantsContainText(event.source, strongUninstall)
+            val clickedOk = okYes.any { clicked.equals(it, ignoreCase = true) || clicked.contains(it) } ||
+                nodeOrDescendantsContainText(event.source, okYes)
+            if (!clickedStrong && !(clickedOk && (fromInstaller || fromSettingsFlow))) return
+            
+            val ourKeys = listOf(
+                "Fasst Pay", "FasstPay", "fasst pay", "EMI Locker", "emilockercustomer",
+                "com.rohit.emilockercustomer", "rohit.emilockercustomer"
+            )
+            val roots = mutableListOf<AccessibilityNodeInfo>()
+            rootInActiveWindow?.let { roots.add(it) }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                @Suppress("DEPRECATION")
+                windows?.forEach { w -> w.root?.let { r -> if (roots.none { it == r }) roots.add(r) } }
+            }
+            for (root in roots) {
+                val pkg = root.packageName?.toString() ?: ""
+                val relevant = fromInstaller || isUninstallRelatedPackage(pkg) ||
+                    pkg.contains("settings", ignoreCase = true) ||
+                    pkg.contains("securitycenter", ignoreCase = true)
+                if (!relevant) continue
+                if (findNodesByText(root, ourKeys).isEmpty() && !checkForFasstPayPackage(root)) continue
+                val now = System.currentTimeMillis()
+                if (now - lastInstallerUninstallBlockTime < INSTALLER_UNINSTALL_DEBOUNCE_MS) return
+                lastInstallerUninstallBlockTime = now
+                Log.e(TAG, "🚨 Uninstall confirm click for Fasst Pay ($pkg) — blocking")
+                blockImmediatelyAndShowOverlay(
+                    "Uninstall blocked",
+                    "Fasst Pay cannot be uninstalled during EMI period."
+                )
+                return
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "checkForUninstallConfirmationClick: ${e.message}", e)
         }
     }
     
@@ -211,60 +344,35 @@ class AppUsageMonitorService : AccessibilityService() {
     }
     
     /**
-     * Check if user clicked on Fasst Pay app itself in Settings > Apps list (or App info screen)
-     * This detects the click when user taps App info/Pause, or goes to Apps and taps Fasst Pay.
+     * Settings / MIUI apps list: block tap on Fasst Pay row only.
+     * Do NOT block launcher home-screen single tap (same node often has "Fasst Pay" as label — that opens the app).
      */
     private fun checkForFasstPayAppClick(event: AccessibilityEvent) {
         try {
-            val clickedText = event.text?.toString() ?: ""
-            val contentDesc = event.contentDescription?.toString() ?: ""
             val packageName = event.packageName?.toString() ?: ""
+            val isSettingsAppsList = packageName == "com.android.settings" ||
+                packageName == "com.miui.securitycenter" ||
+                packageName.contains("settings", ignoreCase = true) ||
+                packageName.contains("securitycenter", ignoreCase = true)
+            if (!isSettingsAppsList) return
             
-            Log.e(TAG, "🔍 Checking for Fasst Pay app click...")
-            Log.e(TAG, "🖱️ Clicked text: '$clickedText'")
-            Log.e(TAG, "🖱️ Content desc: '$contentDesc'")
-            Log.e(TAG, "🖱️ Package: '$packageName'")
-            
+            val rootNode = rootInActiveWindow ?: return
             val fasstPayKeywords = listOf(
                 "Fasst Pay", "FasstPay", "fasst pay", "Fasst pay",
                 "EMI Locker", "Emi Locker", "emilockercustomer"
             )
+            val fasstPayNodes = findNodesByText(rootNode, fasstPayKeywords)
+            val hasFasstPayPackage = checkForFasstPayPackage(rootNode)
+            if (fasstPayNodes.isEmpty() && !hasFasstPayPackage) return
             
-            // 1) Event text/contentDesc has Fasst Pay
-            val isFasstPayClick = fasstPayKeywords.any { keyword ->
-                clickedText.contains(keyword, ignoreCase = true) ||
-                contentDesc.contains(keyword, ignoreCase = true)
+            val source = event.source
+            val clickedFasstPayRow = source != null && fasstPayNodes.any { fp ->
+                isSameOrAncestor(fp, source) || isSameOrAncestor(source, fp)
             }
-            
-            // 2) Clicked node (source) or its parents/children contain Fasst Pay (e.g. list row in Apps)
-            val sourceHasFasstPay = nodeOrDescendantsContainText(event.source, fasstPayKeywords)
-            
-            if (isFasstPayClick || sourceHasFasstPay) {
-                Log.e(TAG, "🚨 CRITICAL: Fasst Pay clicked - BACK + overlay immediately!")
+            if (clickedFasstPayRow) {
+                Log.e(TAG, "🚨 Fasst Pay row clicked in Settings/Apps - BACK + overlay!")
                 blockImmediatelyAndShowOverlay("App Access Blocked", "Fasst Pay app settings cannot be accessed during EMI period")
-                return
             }
-            
-            // 3) In Settings > Apps: root has Fasst Pay and clicked node is the Fasst Pay row
-            if (packageName == "com.android.settings") {
-                val rootNode = rootInActiveWindow ?: return
-                val fasstPayNodes = findNodesByText(rootNode, listOf(
-                    "Fasst Pay", "FasstPay", "fasst pay", "Fasst pay",
-                    "EMI Locker", "Emi Locker", "emilockercustomer"
-                ))
-                val hasFasstPayPackage = checkForFasstPayPackage(rootNode)
-                if (fasstPayNodes.isNotEmpty() || hasFasstPayPackage) {
-                    val source = event.source
-                    val clickedFasstPayRow = source != null && fasstPayNodes.any { fp ->
-                        isSameOrAncestor(fp, source) || isSameOrAncestor(source, fp)
-                    }
-                    if (clickedFasstPayRow) {
-                        Log.e(TAG, "🚨 Fasst Pay row clicked in Settings - BACK + overlay immediately!")
-                        blockImmediatelyAndShowOverlay("App Access Blocked", "Fasst Pay app settings cannot be accessed during EMI period")
-                    }
-                }
-            }
-            
         } catch (e: Exception) {
             Log.e(TAG, "Error checking Fasst Pay app click: ${e.message}", e)
         }
@@ -585,6 +693,9 @@ class AppUsageMonitorService : AccessibilityService() {
      */
     private fun blockImmediatelyAndShowOverlay(title: String, message: String) {
         if (overlayView != null) return
+        if (System.currentTimeMillis() < protectionGraceUntilMs) return
+        val fg = rootInActiveWindow?.packageName?.toString()
+        if (fg == packageName) return
         Log.e(TAG, "🚨 blockImmediatelyAndShowOverlay: BACK first so screen never opens")
         val h = android.os.Handler(android.os.Looper.getMainLooper())
         performGlobalAction(GLOBAL_ACTION_BACK)
@@ -615,9 +726,20 @@ class AppUsageMonitorService : AccessibilityService() {
      * Show protection overlay when user tries to control app.
      * Always run on main thread so overlay is added correctly.
      */
-    private fun showProtectionOverlay(title: String, message: String) {
+    private fun showProtectionOverlay(title: String, message: String, force: Boolean = false) {
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             try {
+                if (!force && System.currentTimeMillis() < protectionGraceUntilMs) {
+                    Log.d(TAG, "Skip show overlay — grace period")
+                    return@post
+                }
+                if (!force) {
+                    val fg = rootInActiveWindow?.packageName?.toString()
+                    if (fg == packageName) {
+                        Log.d(TAG, "Skip protection overlay — Fasst Pay is foreground (avoid closing app)")
+                        return@post
+                    }
+                }
                 Log.e(TAG, "========== SHOWING DIRECT PROTECTION OVERLAY ==========")
                 Log.e(TAG, "Title: $title")
                 Log.e(TAG, "Message: $message")
@@ -634,7 +756,7 @@ class AppUsageMonitorService : AccessibilityService() {
                     }
                 }
                 
-                hideDirectOverlay()
+                hideDirectOverlay(alsoSendGlobalBack = false)
                 createDirectOverlay(title, message)
                 Log.e(TAG, "✅ Direct protection overlay created successfully")
             } catch (e: Exception) {
@@ -676,17 +798,11 @@ class AppUsageMonitorService : AccessibilityService() {
             windowManager?.addView(overlayView, overlayParams)
             Log.e(TAG, "✅ Direct overlay view added to WindowManager")
             
-            // Extra BACK 150ms after overlay shown so any App Info screen that started opening is closed
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                performGlobalAction(GLOBAL_ACTION_BACK)
-                performGlobalAction(GLOBAL_ACTION_BACK)
-            }, 150)
-            
             dismissTimer = android.os.Handler(android.os.Looper.getMainLooper())
             dismissTimer?.postDelayed({
-                Log.e(TAG, "⏰ Auto-dismiss timer triggered - hiding overlay")
-                hideDirectOverlay()
-            }, 5000) // 5 seconds
+                Log.e(TAG, "⏰ Auto-dismiss — removing overlay now")
+                hideDirectOverlay(alsoSendGlobalBack = true)
+            }, 4000) // 4 seconds — overlay hat jayega, phir peeche screen band karne ke liye BACK
             
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error creating direct overlay: ${e.message}", e)
@@ -708,7 +824,7 @@ class AppUsageMonitorService : AccessibilityService() {
                         return true
                     } else if (event.action == KeyEvent.ACTION_UP) {
                         Log.e(TAG, "🔙 BACK BUTTON UP - Hiding direct overlay NOW")
-                        hideDirectOverlay()
+                        hideDirectOverlay(alsoSendGlobalBack = true)
                         return true
                     }
                 }
@@ -728,7 +844,7 @@ class AppUsageMonitorService : AccessibilityService() {
                 Log.d(TAG, "🔑 onKeyUp: $keyCode")
                 if (keyCode == KeyEvent.KEYCODE_BACK) {
                     Log.e(TAG, "🔙 BACK KEY UP - Hiding overlay")
-                    hideDirectOverlay()
+                    hideDirectOverlay(alsoSendGlobalBack = true)
                     return true
                 }
                 return super.onKeyUp(keyCode, event)
@@ -794,7 +910,7 @@ class AppUsageMonitorService : AccessibilityService() {
         
         // Back button instruction
         val instructionView = TextView(this).apply {
-            text = "Press back button to dismiss"
+            text = "Dismiss dabayein, Back dabayein, ya kuch seconds mein khud band ho jayega"
             textSize = 14f
             setTextColor(Color.parseColor("#666666"))
             gravity = Gravity.CENTER
@@ -812,18 +928,15 @@ class AppUsageMonitorService : AccessibilityService() {
             setPadding(40, 20, 40, 20)
             
             setOnClickListener {
-                Log.e(TAG, "🔙 DISMISS BUTTON CLICKED - Hiding direct overlay")
-                post {
-                    hideDirectOverlay()
-                }
+                Log.e(TAG, "🔙 DISMISS — overlay hataya ja raha hai turant")
+                hideDirectOverlay(alsoSendGlobalBack = true)
             }
         }
         cardContainer.addView(dismissButton)
         
-        // Add click listener to background to dismiss
         container.setOnClickListener {
-            Log.e(TAG, "🔙 BACKGROUND CLICKED - Hiding direct overlay")
-            hideDirectOverlay()
+            Log.e(TAG, "🔙 BACKGROUND TAP — overlay hataya")
+            hideDirectOverlay(alsoSendGlobalBack = true)
         }
         
         container.addView(cardContainer)
@@ -831,38 +944,37 @@ class AppUsageMonitorService : AccessibilityService() {
     }
     
     /**
-     * Hide direct overlay. FIRST send multiple BACKs (while overlay still visible) so App Info
-     * / Uninstall screen is closed, THEN remove overlay. This way user never sees that screen.
+     * Overlay turant WindowManager se hatao (Dismiss / Back / auto-dismiss).
+     * @param alsoSendGlobalBack true = hatne ke baad 2x BACK taaki App Info / menu band rahe
+     * @param alsoSendGlobalBack false = sirf view hatao (naya overlay dikhane ya service destroy par)
      */
-    private fun hideDirectOverlay() {
+    private fun hideDirectOverlay(alsoSendGlobalBack: Boolean = true) {
         try {
             dismissTimer?.removeCallbacksAndMessages(null)
             dismissTimer = null
             
-            val handler = android.os.Handler(android.os.Looper.getMainLooper())
-            val backDelayMs = 90L
-            val backCount = 5
-            
-            fun doBackThenRemove(remaining: Int) {
-                if (remaining <= 0) {
-                    try {
-                        overlayView?.let { view ->
-                            windowManager?.removeView(view)
-                            Log.e(TAG, "✅ Overlay removed after BACKs - app control screen closed")
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error removing overlay: ${e.message}")
-                    }
-                    overlayView = null
-                    overlayParams = null
-                    return
+            try {
+                overlayView?.let { view ->
+                    windowManager?.removeView(view)
+                    Log.e(TAG, "✅ Overlay turant remove ho gaya")
                 }
-                performGlobalAction(GLOBAL_ACTION_BACK)
-                Log.e(TAG, "🔙 BACK to close app control (${backCount - remaining + 1}/$backCount)")
-                handler.postDelayed({ doBackThenRemove(remaining - 1) }, backDelayMs)
+            } catch (e: Exception) {
+                Log.e(TAG, "removeView: ${e.message}")
             }
+            overlayView = null
+            overlayParams = null
             
-            doBackThenRemove(backCount)
+            // Never send global BACK when our Flutter app is foreground — it pops routes / exits app.
+            if (alsoSendGlobalBack) {
+                val fg = rootInActiveWindow?.packageName?.toString()
+                if (fg == packageName) {
+                    Log.d(TAG, "Skip global BACK — Fasst Pay (Flutter) is foreground")
+                } else {
+                    val h = android.os.Handler(android.os.Looper.getMainLooper())
+                    h.postDelayed({ performGlobalAction(GLOBAL_ACTION_BACK) }, 50)
+                    h.postDelayed({ performGlobalAction(GLOBAL_ACTION_BACK) }, 120)
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "❌ Error hiding direct overlay: ${e.message}", e)
             overlayView = null
@@ -885,7 +997,7 @@ class AppUsageMonitorService : AccessibilityService() {
             Log.d(TAG, "unregisterReceiver: ${e.message}")
         }
         testOverlayReceiver = null
-        hideDirectOverlay()
+        hideDirectOverlay(alsoSendGlobalBack = false)
     }
     
     override fun onUnbind(intent: Intent?): Boolean {

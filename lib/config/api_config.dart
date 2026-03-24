@@ -1,6 +1,6 @@
 class ApiConfig {
   // Base URL
-  static const String baseUrl = 'https://api.fasstpay.coo/api';
+  static const String baseUrl = 'https://api.fasstpay.co/api';
 
   // Auth Endpoints
   static const String login = '$baseUrl/auth/login';

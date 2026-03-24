@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'native_location_tracking_service.dart';
 import '../config/api_config.dart';
 import '../models/home_models.dart';
 import '../utils/api_client.dart';
@@ -109,6 +110,7 @@ class AuthService {
   }
 
   Future<void> logout() async {
+    await NativeLocationTrackingService.stop();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_authTokenKey);
     await signOut();

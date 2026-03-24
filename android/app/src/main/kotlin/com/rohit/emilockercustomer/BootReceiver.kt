@@ -125,6 +125,15 @@ class BootReceiver : BroadcastReceiver() {
             } else {
                 Log.e(TAG, "❌ Device is NOT locked - overlay will NOT be shown on boot")
                 Log.e(TAG, "This means lock status was cleared or device was unlocked")
+                // Logged-in users: restart location foreground service so FCM get_location works without opening app
+                try {
+                    if (LocationTrackingService.shouldRun(context)) {
+                        LocationTrackingService.start(context)
+                        Log.e(TAG, "✅ LocationTrackingService started after boot (user logged in + location allowed)")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "LocationTrackingService on boot: ${e.message}", e)
+                }
             }
         } else {
             Log.e(TAG, "❌ Not a boot action - ignoring. Action was: $action")

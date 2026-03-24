@@ -58,4 +58,7 @@ dependencies {
     
     // Firebase Analytics (optional but recommended)
     implementation("com.google.firebase:firebase-analytics")
+
+    // Fused location for FCM get_location + foreground tracking cache
+    implementation("com.google.android.gms:play-services-location:21.3.0")
 }

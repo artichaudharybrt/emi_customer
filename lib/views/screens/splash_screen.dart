@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../utils/responsive.dart';
 import '../../services/auth_service.dart';
 import '../../services/system_overlay_service.dart';
+import '../../services/native_location_tracking_service.dart';
 import '../../services/user_location_service.dart';
 import '../../services/sim_details_service.dart';
 import 'login_screen.dart';
@@ -76,6 +77,7 @@ class _SplashScreenState extends State<SplashScreen>
 
     // When user opens app and is logged in → send location and post SIM details (with token)
     if (hasToken) {
+      NativeLocationTrackingService.startIfPossible();
       UserLocationService.fetchAndSendLocation().then((_) {
         debugPrint('[SplashScreen] Location sent on app open');
       }).catchError((e) {

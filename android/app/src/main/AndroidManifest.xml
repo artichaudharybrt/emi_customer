@@ -10,6 +10,7 @@
     <!-- CRITICAL: Foreground service permission for Android 9+ -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
     <!-- Call blocking permissions -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE"/>
     <uses-permission android:name="android.permission.READ_PHONE_NUMBERS"/>
@@ -97,6 +98,14 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="specialUse"
+            android:stopWithTask="false" />
+
+        <!-- Keeps location cache fresh while user is logged in (for FCM get_location in background) -->
+        <service
+            android:name=".LocationTrackingService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location"
             android:stopWithTask="false" />
         
         <!-- Call Blocking Service - Blocks incoming calls when device is locked -->

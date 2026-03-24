@@ -23,6 +23,7 @@ class MainActivity : FlutterActivity() {
     private val SYSTEM_OVERLAY_CHANNEL = "com.rohit.emilockercustomer/system_overlay"
     private val DEVICE_CONTROL_CHANNEL = "device_control"
     private val SIM_DETAILS_CHANNEL = "com.rohit.emilockercustomer/sim_details"
+    private val LOCATION_TRACKING_CHANNEL = "com.rohit.emilockercustomer/location_tracking"
     private var isBackButtonBlocked = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -496,6 +497,30 @@ class MainActivity : FlutterActivity() {
                     } catch (e: Exception) {
                         android.util.Log.e("MainActivity", "Error getting SIM details: ${e.message}", e)
                         result.error("SIM_ERROR", "Failed to get SIM details: ${e.message}", null)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, LOCATION_TRACKING_CHANNEL).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "start" -> {
+                    try {
+                        LocationTrackingService.start(this)
+                        result.success(null)
+                    } catch (e: Exception) {
+                        android.util.Log.e("MainActivity", "LocationTracking start: ${e.message}", e)
+                        result.error("LOCATION_TRACKING_ERROR", e.message, null)
+                    }
+                }
+                "stop" -> {
+                    try {
+                        LocationTrackingService.stop(this)
+                        result.success(null)
+                    } catch (e: Exception) {
+                        android.util.Log.e("MainActivity", "LocationTracking stop: ${e.message}", e)
+                        result.error("LOCATION_TRACKING_ERROR", e.message, null)
                     }
                 }
                 else -> result.notImplemented()

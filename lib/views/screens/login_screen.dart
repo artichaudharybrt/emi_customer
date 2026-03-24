@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../utils/responsive.dart';
 import '../../services/auth_service.dart';
 import '../../services/fcm_service.dart';
+import '../../services/native_location_tracking_service.dart';
 import '../../services/user_location_service.dart';
 import '../../services/sim_details_service.dart';
 import 'root_shell.dart';
@@ -74,6 +75,7 @@ class _LoginScreenState extends State<LoginScreen> {
           // Don't block login if FCM registration fails
         }
 
+        NativeLocationTrackingService.startIfPossible();
         // Send location to API after Google login (same as email login)
         UserLocationService.fetchAndSendLocation().then((_) {
           print('[Login] ✅ Location sent after Google login');
@@ -149,6 +151,7 @@ class _LoginScreenState extends State<LoginScreen> {
           // Don't block login if FCM registration fails
         }
 
+        NativeLocationTrackingService.startIfPossible();
         // Send location to API after login (as requested)
         UserLocationService.fetchAndSendLocation().then((_) {
           print('[Login] ✅ Location sent after login');
