@@ -24,6 +24,7 @@ class PdfService {
   }) async {
 
     final pdf = pw.Document();
+    pw.MemoryImage? fasstPayLogo;
 
     // ✅ SAFE FONT (₹ + Hindi + English supported)
     final fontData = await rootBundle.load(
@@ -31,19 +32,53 @@ class PdfService {
     );
     final ttf = pw.Font.ttf(fontData);
 
+    // Try loading Fasst Pay logo from multiple known asset paths.
+    const logoPaths = [
+      'assets/images/fasstpay_logo.png',
+      'android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png',
+      'android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png',
+      'android/app/src/main/res/mipmap-xhdpi/ic_launcher.png',
+    ];
+    for (final path in logoPaths) {
+      try {
+        final logoData = await rootBundle.load(path);
+        fasstPayLogo = pw.MemoryImage(logoData.buffer.asUint8List());
+        break;
+      } catch (_) {
+        // Keep trying next available path.
+      }
+    }
+
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         margin: const pw.EdgeInsets.all(24),
         build: (context) => [
 
-          pw.Text(
-            'EMI STATEMENT',
-            style: pw.TextStyle(
-              font: ttf,
-              fontSize: 22,
-              fontWeight: pw.FontWeight.bold,
-            ),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              pw.Text(
+                'EMI STATEMENT',
+                style: pw.TextStyle(
+                  font: ttf,
+                  fontSize: 22,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+              if (fasstPayLogo != null)
+                pw.Image(fasstPayLogo, width: 90, height: 40, fit: pw.BoxFit.contain)
+              else
+                pw.Text(
+                  'FASST PAY',
+                  style: pw.TextStyle(
+                    font: ttf,
+                    fontSize: 12,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+            ],
           ),
 
           pw.SizedBox(height: 12),
@@ -84,9 +119,11 @@ class PdfService {
             headers: ['Month', 'Year', 'Due Date', 'Status'],
             data: payments.map<List<String>>((p) {
               final dueDate = p.dueDate;
+              final month = (p.month >= 1 && p.month <= 12) ? p.month : dueDate.month;
+              final year = p.year > 0 ? p.year : dueDate.year;
               return [
-                _getMonthName(p.month),
-                p.year.toString(),
+                _getMonthName(month),
+                year.toString(),
                 '${dueDate.day}/${dueDate.month}/${dueDate.year}',
                 p.status.toUpperCase(),
               ];

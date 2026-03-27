@@ -105,7 +105,7 @@ class EmiModel {
       'id': id,
       'emiId': id, // For API calls
       'product': description.isNotEmpty ? description : (billNumber.isNotEmpty ? billNumber : 'EMI Product'),
-      'image': 'assets/images/img.png', // Default image
+      'image': 'assets/images/iphone.png', // Default image
       'amount': installmentAmount.toInt(),
       'months': totalInstallments,
       'paid': paidInstallments,

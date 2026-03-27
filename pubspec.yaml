@@ -75,10 +75,11 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
-    - assets/images/img.png
-    - assets/images/iphone.png
-    - assets/images/samsun.png
+    - assets/images/
     - assets/font/NotoSans-Regular.ttf
+    - android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+    - android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+    - android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
   #   - images/a_dot_ham.jpeg
 
   # An image asset can refer to one or more resolution-specific "variants", see

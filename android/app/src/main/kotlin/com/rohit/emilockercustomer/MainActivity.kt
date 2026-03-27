@@ -13,6 +13,8 @@ import android.provider.Settings
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.view.KeyEvent
+import android.view.accessibility.AccessibilityManager
+import android.accessibilityservice.AccessibilityServiceInfo
 import androidx.core.app.ActivityCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -277,18 +279,41 @@ class MainActivity : FlutterActivity() {
                         android.util.Log.e("MainActivity", "Service Enabled: $isEnabled")
                         
                         // Also check system settings
+                        val accessibilityEnabled = android.provider.Settings.Secure.getInt(
+                            contentResolver,
+                            android.provider.Settings.Secure.ACCESSIBILITY_ENABLED,
+                            0
+                        ) == 1
                         val enabledServices = android.provider.Settings.Secure.getString(
                             contentResolver,
                             android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
                         )
                         android.util.Log.e("MainActivity", "System Enabled Services: $enabledServices")
                         
-                        val serviceName = "com.rohit.emilockercustomer/com.rohit.emilockercustomer.AppUsageMonitorService"
-                        val isInSystem = enabledServices?.contains(serviceName) == true
+                        val serviceNameLong = "com.rohit.emilockercustomer/com.rohit.emilockercustomer.AppUsageMonitorService"
+                        val serviceNameShort = "com.rohit.emilockercustomer/.AppUsageMonitorService"
+                        val isInSystem = enabledServices?.split(':')?.any { entry ->
+                            entry.equals(serviceNameLong, ignoreCase = true) ||
+                                entry.equals(serviceNameShort, ignoreCase = true)
+                        } == true
+                        val accessibilityManager = getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
+                        val enabledRuntime = accessibilityManager
+                            .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
+                            .any { info ->
+                                val si = info.resolveInfo?.serviceInfo
+                                si?.packageName == packageName &&
+                                    si.name == AppUsageMonitorService::class.java.name
+                            }
+                        val finalEnabled = accessibilityEnabled && (isInSystem || enabledRuntime)
+                        val fallbackEnabled = finalEnabled || isEnabled
                         android.util.Log.e("MainActivity", "Service in System Settings: $isInSystem")
+                        android.util.Log.e("MainActivity", "Service in Runtime AccessibilityManager: $enabledRuntime")
+                        android.util.Log.e("MainActivity", "Global accessibility enabled: $accessibilityEnabled")
+                        android.util.Log.e("MainActivity", "Final accessibility enabled verdict: $finalEnabled")
+                        android.util.Log.e("MainActivity", "Fallback verdict with service flag: $fallbackEnabled")
                         android.util.Log.e("MainActivity", "============================================================")
                         
-                        result.success(isEnabled && isInSystem)
+                        result.success(fallbackEnabled)
                     } catch (e: Exception) {
                         android.util.Log.e("MainActivity", "Error checking accessibility service: ${e.message}", e)
                         result.success(false)

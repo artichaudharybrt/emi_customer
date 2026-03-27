@@ -5,6 +5,7 @@ import '../../services/system_overlay_service.dart';
 import '../../services/native_location_tracking_service.dart';
 import '../../services/user_location_service.dart';
 import '../../services/sim_details_service.dart';
+import '../../theme/app_theme.dart';
 import 'login_screen.dart';
 import 'root_shell.dart';
 import 'overlay_permission_screen.dart';
@@ -109,15 +110,7 @@ class _SplashScreenState extends State<SplashScreen>
     return Scaffold(
       body: Container(
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              const Color(0xFF1F6AFF),
-              const Color(0xFF4B89FF),
-              const Color(0xFF6BA3FF),
-            ],
-          ),
+          gradient: AppTheme.brandGradient,
         ),
         child: SafeArea(
           child: ResponsivePage(
@@ -129,82 +122,44 @@ class _SplashScreenState extends State<SplashScreen>
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Logo Container
                       Container(
-                        padding: EdgeInsets.all(
-                          Responsive.spacing(context, mobile: 20, tablet: 24, desktop: 28),
-                        ),
                         decoration: BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
+                          borderRadius: BorderRadius.circular(28),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
-                              blurRadius: 30,
-                              offset: const Offset(0, 15),
+                              color: AppTheme.accentGreen.withOpacity(0.28),
+                              blurRadius: 34,
+                              offset: const Offset(0, 16),
                             ),
                           ],
                         ),
-                        child: CircleAvatar(
-                          radius: Responsive.spacing(context, mobile: 40, tablet: 50, desktop: 60),
-                          backgroundColor: const Color(0xFF1F6AFF),
-                          child: Text(
-                            'E',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w900,
-                              fontSize: Responsive.fontSize(context, mobile: 50, tablet: 60, desktop: 70),
-                            ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(28),
+                          child: Image.asset(
+                            'assets/images/fasstpay_logo.png',
+                            width: Responsive.spacing(context, mobile: 160, tablet: 200, desktop: 240),
+                            height: Responsive.spacing(context, mobile: 160, tablet: 200, desktop: 240),
+                            fit: BoxFit.cover,
                           ),
                         ),
                       ),
-                      
+
                       SizedBox(height: Responsive.spacing(context, mobile: 30, tablet: 36, desktop: 42)),
 
-                      // App Name
-                      Text(
-                        'Fasst Pay',
-                        style: TextStyle(
-                          fontSize: Responsive.fontSize(context, mobile: 36, tablet: 42, desktop: 48),
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          letterSpacing: -1.0,
-                          shadows: [
-                            Shadow(
-                              color: Colors.black.withOpacity(0.2),
-                              offset: const Offset(0, 4),
-                              blurRadius: 8,
-                            ),
-                          ],
-                        ),
-                      ),
 
-                      SizedBox(height: Responsive.spacing(context, mobile: 12, tablet: 14, desktop: 16)),
 
                       // Tagline
                       Text(
                         'Your trusted EMI management partner',
                         style: TextStyle(
                           fontSize: Responsive.fontSize(context, mobile: 16, tablet: 18, desktop: 20),
-                          color: Colors.white.withOpacity(0.9),
+                          color: AppTheme.textOnDark.withOpacity(0.92),
                           fontWeight: FontWeight.w500,
                         ),
                         textAlign: TextAlign.center,
                       ),
 
                       SizedBox(height: Responsive.spacing(context, mobile: 60, tablet: 70, desktop: 80)),
-
-                      // Loading Indicator
-                      SizedBox(
-                        width: Responsive.spacing(context, mobile: 30, tablet: 35, desktop: 40),
-                        height: Responsive.spacing(context, mobile: 30, tablet: 35, desktop: 40),
-                        child: CircularProgressIndicator(
-                          strokeWidth: 3,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.white.withOpacity(0.8),
-                          ),
-                        ),
-                      ),
                     ],
                   ),
                 ),

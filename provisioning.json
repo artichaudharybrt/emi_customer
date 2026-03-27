@@ -1,0 +1,10 @@
+{
+  "appName": "emi_customer",
+  "packageName": "com.rohit.emilockercustomer",
+  "versionName": "1.2",
+  "releaseTag": "v1.2",
+  "apkUrl": "https://github.com/artichaudharybrt/emi_customer/releases/download/v1.2/emi_customer.apk",
+  "sha256": "c46ca8aba9a80c39a9e06e358d6975233f7debcf11e59c9bddd20d8ffb15193c",
+  "forceUpdate": true,
+  "releaseNotes": "update 1.2"
+}
