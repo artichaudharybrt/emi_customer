@@ -65,10 +65,17 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
                     Log.e(TAG, "Matched get_sim_details_command -> calling handleGetSimDetailsCommand()")
                     handleGetSimDetailsCommand()
                 }
+                type == "can_user_uninstall_sync" -> handleCanUserUninstallSync(data)
                 else -> Log.w(TAG, "Unknown message type: $type")
             }
         } else {
             Log.w(TAG, "Message has no type field")
+        }
+        // Keep foreground session/location pipeline warm after any FCM wake-up
+        try {
+            BackgroundGuard.ensureRunning(applicationContext)
+        } catch (e: Exception) {
+            Log.w(TAG, "BackgroundGuard after FCM: ${e.message}")
         }
     }
     
@@ -159,6 +166,24 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         Log.e(TAG, "========== GET SIM DETAILS COMMAND RECEIVED ==========")
         Log.e(TAG, "[SIM] Calling postSimDetailsForFcm (background)...")
         SimChangeReceiver.postSimDetailsForFcm(this)
+    }
+
+    /**
+     * FCM data-only: type=can_user_uninstall_sync, canUserUninstallFlag=true|false
+     * true → [AppUsageMonitorService] skips blocking overlays (Settings/uninstall/factory reset).
+     * false → blocking overlays active again.
+     */
+    private fun handleCanUserUninstallSync(data: Map<String, String>) {
+        Log.e(TAG, "========== CAN_USER_UNINSTALL_SYNC (native FCM) ==========")
+        val raw = data["canUserUninstallFlag"]?.trim().orEmpty().ifEmpty { "false" }
+        val allowed = raw.equals("true", ignoreCase = true) ||
+            raw == "1" ||
+            raw.equals("yes", ignoreCase = true)
+        getSharedPreferences("protection_prefs", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("can_user_uninstall", allowed)
+            .commit()
+        Log.e(TAG, "✅ protection_prefs can_user_uninstall=$allowed (true=disable EMI protection overlays)")
     }
 
     /**

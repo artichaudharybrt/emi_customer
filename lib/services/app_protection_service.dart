@@ -49,6 +49,15 @@ class AppProtectionService {
       debugPrint('❌ Error opening accessibility settings: $e');
     }
   }
+
+  /// Opens system dialog so Fasst Pay is excluded from battery optimization (better FCM / background EMI actions).
+  static Future<void> requestIgnoreBatteryOptimizations() async {
+    try {
+      await _channel.invokeMethod('requestIgnoreBatteryOptimizations');
+    } catch (e) {
+      debugPrint('❌ Battery optimization request: $e');
+    }
+  }
   
   /// Get comprehensive protection status
   /// 

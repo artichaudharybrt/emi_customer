@@ -11,6 +11,7 @@ import 'package:emilockercustomer/services/overlay_permission_monitor_service.da
 import 'package:emilockercustomer/services/auth_service.dart';
 import 'package:emilockercustomer/services/native_location_tracking_service.dart';
 import 'package:emilockercustomer/services/user_location_service.dart';
+import 'package:emilockercustomer/services/uninstall_flag_service.dart';
 import 'package:flutter/foundation.dart';
 
 void main() async {
@@ -59,11 +60,6 @@ void main() async {
     print('[Main] Overlay Permission Monitor initialization error: $e');
   }
   
-  // Choose between original app and locker wrapper
-  // Uncomment the line below to use the enhanced locker functionality
-  // runApp(LockerAppWrapper());
-  
-  // Original app (comment out the line above to use this)
   runApp(MyApp(fcmService: fcmService));
 }
 
@@ -149,6 +145,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             AuthService().hasAuthToken().then((hasToken) {
               if (hasToken) {
                 NativeLocationTrackingService.startIfPossible();
+                UninstallFlagService.refreshInBackground();
                 _lastLocationSentOnResume = now;
                 UserLocationService.fetchAndSendLocation().then((_) {
                   debugPrint('[Main] Location sent on app resume');

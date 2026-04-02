@@ -6,18 +6,17 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.os.Build
 import android.os.Looper
 import android.util.Log
 import android.view.Gravity
 import android.view.KeyEvent
-import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.content.BroadcastReceiver
@@ -75,7 +74,8 @@ class AppUsageMonitorService : AccessibilityService() {
         Log.e(TAG, "========== ✅ APP USAGE MONITOR SERVICE CONNECTED ==========")
         Log.e(TAG, "✅ Service is now active and monitoring events")
         isServiceEnabled = true
-        protectionGraceUntilMs = System.currentTimeMillis() + 4500L
+        // Short grace: only soft paths (e.g. test overlay) skip; Settings/App blocks must never be blind for seconds.
+        protectionGraceUntilMs = System.currentTimeMillis() + 1200L
         
         // Initialize WindowManager for direct overlay
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -150,9 +150,6 @@ class AppUsageMonitorService : AccessibilityService() {
     
     private fun handleAccessibilityEvent(event: AccessibilityEvent) {
         try {
-            if (System.currentTimeMillis() < protectionGraceUntilMs) {
-                return
-            }
             // Get event details
             val packageName = event.packageName?.toString()
             val className = event.className?.toString()
@@ -237,14 +234,9 @@ class AppUsageMonitorService : AccessibilityService() {
                     checkForDangerousScreensOnWindowChange(event)
                 }
             }
-            
-            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-                (packageName == "com.android.settings" || packageName == "com.miui.securitycenter" || packageName?.contains("settings") == true)) {
-                val h = android.os.Handler(android.os.Looper.getMainLooper())
-                h.postAtFrontOfQueue { checkForAppInfoScreen(event) }
-                h.postDelayed({ checkForAppInfoScreen(event) }, 50)
-                h.postDelayed({ checkForAppInfoScreen(event) }, 200)
-            }
+
+            // Do NOT run checkForAppInfoScreen on WINDOW_STATE_CHANGED — Settings home uses the same
+            // words as app info (Battery, Notifications, …) and falsely triggers overlay.
             
             // Do NOT run checkForAppInfoScreen on TYPE_WINDOW_CONTENT_CHANGED — it fires on every list scroll
             // and falsely matches "Fasst Pay" list rows as app info. Navigation to app info is covered by
@@ -299,8 +291,22 @@ class AppUsageMonitorService : AccessibilityService() {
             p == "com.miui.home"
     }
 
+    /**
+     * Server GET /users/me/uninstall-flag → when [canUserUninstallFlag] is true, user may uninstall;
+     * skip EMI blocking overlays (Settings → Apps, factory reset, uninstall UI).
+     */
+    private fun isUninstallAllowedByServerFlag(): Boolean {
+        return try {
+            getSharedPreferences("protection_prefs", Context.MODE_PRIVATE)
+                .getBoolean("can_user_uninstall", false)
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     private fun checkForMiuiDeleteDialog(event: AccessibilityEvent) {
         try {
+            if (isUninstallAllowedByServerFlag()) return
             val pkg = event.packageName?.toString() ?: return
             if (pkg != "com.miui.home") return
             val cls = event.className?.toString() ?: ""
@@ -334,6 +340,7 @@ class AppUsageMonitorService : AccessibilityService() {
      */
     private fun checkForFastLauncherDragUninstallDialog(event: AccessibilityEvent) {
         try {
+            if (isUninstallAllowedByServerFlag()) return
             val pkg = event.packageName?.toString() ?: return
             if (!isLauncherPackage(pkg)) return
             if (overlayView != null) return
@@ -383,64 +390,13 @@ class AppUsageMonitorService : AccessibilityService() {
     /**
      * Generic launcher uninstall dialog detector (also catches drag-to-uninstall flows).
      */
-    private fun checkForLauncherUninstallDialog(event: AccessibilityEvent) {
-        try {
-            val pkg = event.packageName?.toString() ?: return
-            if (!isLauncherPackage(pkg)) return
-            if (overlayView != null) return
-            if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
-            
-            val roots = mutableListOf<AccessibilityNodeInfo>()
-            rootInActiveWindow?.let { roots.add(it) }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                @Suppress("DEPRECATION")
-                windows?.forEach { w -> w.root?.let { r -> if (roots.none { it == r }) roots.add(r) } }
-            }
-            if (roots.isEmpty()) return
-            
-            val uninstallKeys = listOf("Uninstall", "Remove", "Delete", "अनइंस्टॉल", "हटाए")
-            val cancelKeys = listOf("Cancel", "No", "रद्द करें", "नहीं")
-            val appKeys = listOf(
-                "Fasst Pay", "FasstPay", "fasst pay", "EMI Locker", "Emi Locker",
-                "emilockercustomer", "com.rohit.emilockercustomer"
-            )
-            val cls = event.className?.toString()?.lowercase() ?: ""
-            val hasDialogClass = cls.contains("dialog")
-            
-            for (root in roots) {
-                val hasUninstall = findNodesByText(root, uninstallKeys).isNotEmpty()
-                val hasCancel = findNodesByText(root, cancelKeys).isNotEmpty()
-                val hasOurAppInDialog = findNodesByText(root, appKeys).isNotEmpty()
-                // Drag-to-delete dialog on MIUI can come with empty event.text.
-                // So rely on dialog content tree instead of event text.
-                if (hasUninstall && hasCancel && hasOurAppInDialog && (hasDialogClass || pkg == "com.miui.home")) {
-                    val now = System.currentTimeMillis()
-                    if (now - lastLauncherDialogBlockTime < LAUNCHER_DIALOG_BLOCK_DEBOUNCE_MS) return
-                    lastLauncherDialogBlockTime = now
-                    if (now - lastInstallerUninstallBlockTime < INSTALLER_UNINSTALL_DEBOUNCE_MS) return
-                    lastInstallerUninstallBlockTime = now
-                    uninstallGuardUntilMs = now + LAUNCHER_UNINSTALL_GUARD_MS
-                    Log.e(TAG, "🚨 Launcher uninstall dialog detected ($pkg) — forcing HOME + overlay")
-                    performGlobalAction(GLOBAL_ACTION_HOME)
-                    showProtectionOverlay(
-                        "Uninstall blocked",
-                        "Fasst Pay cannot be uninstalled during EMI period",
-                        force = true
-                    )
-                    return
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "checkForLauncherUninstallDialog: ${e.message}", e)
-        }
-    }
-    
     /**
      * Fast-path block: launcher uninstall tap should be blocked instantly before any delayed scans.
      * This closes uninstall popup immediately so user can't press confirm in the delay window.
      */
     private fun checkForImmediateLauncherUninstallTap(event: AccessibilityEvent) {
         try {
+            if (isUninstallAllowedByServerFlag()) return
             val pkg = event.packageName?.toString() ?: return
             if (!isLauncherPackage(pkg)) return
             val nowGate = System.currentTimeMillis()
@@ -507,10 +463,7 @@ class AppUsageMonitorService : AccessibilityService() {
                 "emilockercustomer", "com.rohit.emilockercustomer", "rohit.emilockercustomer"
             )
             val uninstallKeys = listOf("Uninstall", "Remove", "Delete", "अनइंस्टॉल", "हटाए")
-            val resetKeys = listOf(
-                "Erase all data", "Factory reset", "Factory data reset", "Delete all data",
-                "Wipe data", "Master clear", "सभी डेटा मिटाएं", "फ़ैक्टरी रीसेट"
-            )
+            val resetKeys = factoryResetScreenKeywords()
 
             val roots = mutableListOf<AccessibilityNodeInfo>()
             rootInActiveWindow?.let { roots.add(it) }
@@ -550,6 +503,23 @@ class AppUsageMonitorService : AccessibilityService() {
         }
     }
     
+    private fun factoryResetScreenKeywords(): List<String> = listOf(
+        "Erase all data",
+        "Factory reset",
+        "Factory data reset",
+        "Erase all content and settings",
+        "Delete all data",
+        "Wipe data",
+        "Master clear",
+        "Reset phone",
+        "Reset device",
+        "Restore factory settings",
+        "Erase phone",
+        "सभी डेटा मिटाएं",
+        "फ़ैक्टरी रीसेट",
+        "सभी सामग्री और सेटिंग्स मिटाएँ"
+    )
+
     /** Heuristic for Settings app list pages where scroll should not trigger protection overlay. */
     private fun isLikelyAppsListScreen(): Boolean {
         return try {
@@ -561,6 +531,9 @@ class AppUsageMonitorService : AccessibilityService() {
                 "Installed apps",
                 "App management",
                 "Apps",
+                "See all apps",
+                "App list",
+                "Applications",
                 "ऐप्स",
                 "इंस्टॉल किए गए ऐप्स",
                 "डाउनलोड किए गए ऐप्स",
@@ -690,20 +663,6 @@ class AppUsageMonitorService : AccessibilityService() {
     }
     
     /**
-     * Get human-readable event type name for debugging
-     */
-    private fun getEventTypeName(eventType: Int): String {
-        return when (eventType) {
-            AccessibilityEvent.TYPE_VIEW_CLICKED -> "CLICKED"
-            AccessibilityEvent.TYPE_VIEW_SELECTED -> "SELECTED"
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> "WINDOW_CHANGED"
-            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> "TEXT_CHANGED"
-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> "CONTENT_CHANGED"
-            else -> "OTHER($eventType)"
-        }
-    }
-    
-    /**
      * Settings / MIUI apps list: block tap on Fasst Pay row only.
      * Do NOT block launcher home-screen single tap (same node often has "Fasst Pay" as label — that opens the app).
      */
@@ -729,10 +688,15 @@ class AppUsageMonitorService : AccessibilityService() {
             if (fasstPayNodes.isEmpty() && !hasFasstPayPackage && !fromEventText) return
             
             val source = event.source
-            val clickedFasstPayRow = source != null && fasstPayNodes.any { fp ->
+            val hierarchyHit = source != null && fasstPayNodes.any { fp ->
                 isSameOrAncestor(fp, source) || isSameOrAncestor(source, fp)
             }
-            if (clickedFasstPayRow || fromEventText) {
+            // OEM rows: label on sibling — use screen bounds overlap with Fasst Pay row (Settings app list only).
+            val boundsHitOnAppList = rootNode != null && isLikelyAppsListScreen() &&
+                source != null && fasstPayNodes.isNotEmpty() &&
+                clickBoundsOverlapAnyFasstPayNode(source, fasstPayNodes)
+            val shouldBlock = fromEventText || hierarchyHit || boundsHitOnAppList
+            if (shouldBlock) {
                 val now = System.currentTimeMillis()
                 uninstallGuardUntilMs = now + SETTINGS_APP_FLOW_GUARD_MS
                 Log.e(TAG, "🚨 Fasst Pay row/tap in Settings/Apps — block + guard ${SETTINGS_APP_FLOW_GUARD_MS}ms")
@@ -740,6 +704,25 @@ class AppUsageMonitorService : AccessibilityService() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error checking Fasst Pay app click: ${e.message}", e)
+        }
+    }
+
+    private fun clickBoundsOverlapAnyFasstPayNode(
+        source: AccessibilityNodeInfo,
+        fasstPayNodes: List<AccessibilityNodeInfo>
+    ): Boolean {
+        return try {
+            val rs = Rect()
+            source.getBoundsInScreen(rs)
+            if (rs.isEmpty) return false
+            for (fp in fasstPayNodes) {
+                val rf = Rect()
+                fp.getBoundsInScreen(rf)
+                if (!rf.isEmpty && Rect.intersects(rs, rf)) return true
+            }
+            false
+        } catch (_: Exception) {
+            false
         }
     }
     
@@ -787,17 +770,7 @@ class AppUsageMonitorService : AccessibilityService() {
             val isSettings = isSettingsPackage(packageName)
             if (!isSettings) return
 
-            val labels = listOf(
-                "Erase all data",
-                "Factory reset",
-                "Factory data reset",
-                "Erase all content and settings",
-                "Delete all data",
-                "Wipe data",
-                "Master clear",
-                "सभी डेटा मिटाएं",
-                "फ़ैक्टरी रीसेट"
-            )
+            val labels = factoryResetScreenKeywords()
             val clickedText = event.text?.toString() ?: ""
             val contentDesc = event.contentDescription?.toString() ?: ""
             val blob = "$clickedText $contentDesc"
@@ -1055,113 +1028,35 @@ class AppUsageMonitorService : AccessibilityService() {
         }
     }
     
-    // REMOVED: Continuous monitoring - was causing false positives
-    // Now we only check on actual click events, not continuously scanning
-    
-    // REMOVED: checkForFasstPayInLauncher - Not needed anymore
-    // We now detect actual clicks on app control options instead of just context menu presence
-    
     /**
-     * Check for "App info" or "Pause app" options in popup menus
-     */
-    private fun checkForAppControlOptions(event: AccessibilityEvent) {
-        try {
-            val rootNode = rootInActiveWindow ?: return
-            
-            Log.d(TAG, "Checking for app control options in system UI...")
-            
-            // Look for text containing "App info" or "Pause app" - more comprehensive search
-            // Include all variations of uninstall, clear data, etc.
-            val appControlTexts = listOf(
-                "App info", "App Info", "Application info", "Application Info",
-                "Pause app", "Pause App", "Disable app", "Disable App",
-                "Force stop", "Force Stop", "Uninstall", "Remove", "Delete",
-                "Clear data", "Clear Data", "Clear storage", "Clear Storage",
-                "Storage", "Data usage", "Data Usage", "Permissions",
-                "Battery", "Notifications", "App details", "App Details"
-            )
-            
-            val appInfoNodes = findNodesByText(rootNode, appControlTexts)
-            
-            if (appInfoNodes.isNotEmpty()) {
-                Log.e(TAG, "🚨 DETECTED: App control options (App info / Uninstall) found!")
-                Log.e(TAG, "Found ${appInfoNodes.size} app control nodes")
-                
-                var fasstPayVisible = false
-                val fasstPayKeywords = listOf(
-                    "Fasst Pay", "FasstPay", "fasst pay", "Fasst pay",
-                    "EMI Locker", "Emi Locker", "emilockercustomer"
-                )
-                // Current window
-                val fasstPayNodes = findNodesByText(rootNode, fasstPayKeywords)
-                val hasFasstPayPackage = checkForFasstPayPackage(rootNode)
-                fasstPayVisible = fasstPayNodes.isNotEmpty() || hasFasstPayPackage
-                // Long-press menu may be in focus; Fasst Pay can be in launcher window behind
-                if (!fasstPayVisible && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    @Suppress("DEPRECATION")
-                    val windows = windows
-                    if (windows != null) {
-                        for (win in windows) {
-                            val winRoot = win.root ?: continue
-                            if (findNodesByText(winRoot, fasstPayKeywords).isNotEmpty() || checkForFasstPayPackage(winRoot)) {
-                                fasstPayVisible = true
-                                Log.e(TAG, "🚨 Fasst Pay in another window - blocking menu")
-                                break
-                            }
-                        }
-                    }
-                }
-                if (fasstPayVisible) {
-                    Log.e(TAG, "🚨 App control menu for Fasst Pay - BACK + overlay immediately!")
-                    blockImmediatelyAndShowOverlay("App Control Blocked", "Fasst Pay app cannot be modified or uninstalled during EMI period")
-                } else {
-                    Log.d(TAG, "✅ App control options detected but not for Fasst Pay")
-                }
-            } else {
-                Log.d(TAG, "No app control options detected in current screen")
-            }
-            
-        } catch (e: Exception) {
-            Log.e(TAG, "Error checking app control options: ${e.message}", e)
-        }
-    }
-    
-    /**
-     * Check for app info screen in settings
+     * Per-app details screen only: must show uninstall/force-stop style actions (not Settings home tiles like Battery).
+     * Block only for Fasst Pay / our package, or right after user tapped Fasst Pay row (guard).
      */
     private fun checkForAppInfoScreen(event: AccessibilityEvent) {
         try {
             val rootNode = rootInActiveWindow ?: return
-            // List scroll makes "Fasst Pay" visible as a row — not app info. Never block from that alone.
             if (isLikelyAppsListScreen()) return
-            
-            // Real app info / application details has action rows; downloaded-apps list only has app names.
-            val detailMarkers = listOf(
+
+            val strongAppDetailMarkers = listOf(
                 "Force stop", "Force Stop", "Uninstall", "Clear data", "Clear storage",
-                "Disable", "Permissions", "Notifications", "Storage", "Mobile data",
-                "अनइंस्टॉल", "बलपूर्वक रोकें", "डेटा साफ़ करें", "अनुमतियाँ"
+                "Disable",
+                "अनइंस्टॉल", "बलपूर्वक रोकें", "डेटा साफ़ करें",
             )
-            val hasDetailUi = findNodesByText(rootNode, detailMarkers).isNotEmpty()
-            if (!hasDetailUi) return
-            
-            // Look for Fasst Pay in app info screen with more keywords
+            if (findNodesByText(rootNode, strongAppDetailMarkers).isEmpty()) return
+
             val fasstPayNodes = findNodesByText(rootNode, listOf(
                 "Fasst Pay", "FasstPay", "fasst pay", "Fasst pay",
                 "EMI Locker", "Emi Locker", "emilockercustomer"
             ))
-            
-            // Also check for package name
             val hasFasstPayPackage = checkForFasstPayPackage(rootNode)
-            val guardActive = System.currentTimeMillis() < uninstallGuardUntilMs
-            
-            // Deterministic: if user just tapped Fasst Pay row, guard is armed, so block even when
-            // MIUI detail page omits app title text in accessibility tree.
-            if (fasstPayNodes.isNotEmpty() || hasFasstPayPackage || guardActive) {
+
+            // Do not use uninstallGuard here — guard stays hot after a tap and would block other apps' info screens.
+            if (fasstPayNodes.isNotEmpty() || hasFasstPayPackage) {
                 uninstallGuardUntilMs = System.currentTimeMillis() + SETTINGS_APP_FLOW_GUARD_MS
                 Log.e(TAG, "🚨 Fasst Pay app info screen - BACK + overlay immediately!")
                 blockImmediatelyAndShowOverlay("App Settings Blocked", "Fasst Pay settings cannot be modified during EMI period")
             }
-            
+
         } catch (e: Exception) {
             Log.e(TAG, "Error checking app info screen: ${e.message}", e)
         }
@@ -1197,40 +1092,17 @@ class AppUsageMonitorService : AccessibilityService() {
     }
     
     /**
-     * Recursively find nodes containing text (for partial matches)
-     */
-    private fun findNodesByTextRecursive(node: AccessibilityNodeInfo, searchText: String, foundNodes: MutableList<AccessibilityNodeInfo>) {
-        try {
-            val nodeText = node.text?.toString() ?: ""
-            val nodeContentDesc = node.contentDescription?.toString() ?: ""
-            
-            // Check if this node contains the search text
-            if (nodeText.contains(searchText, ignoreCase = true) || 
-                nodeContentDesc.contains(searchText, ignoreCase = true)) {
-                foundNodes.add(node)
-            }
-            
-            // Recursively check children
-            for (i in 0 until node.childCount) {
-                val child = node.getChild(i)
-                if (child != null) {
-                    findNodesByTextRecursive(child, searchText, foundNodes)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in recursive text search: ${e.message}", e)
-        }
-    }
-    
-    /**
      * Block immediately: BACK first (so App Info screen / menu doesn't open or closes),
      * then show overlay. Use this for click-triggered blocks so screen on hi na ho.
      */
     private fun blockImmediatelyAndShowOverlay(title: String, message: String) {
         if (overlayView != null) return
-        if (System.currentTimeMillis() < protectionGraceUntilMs) return
         val fg = rootInActiveWindow?.packageName?.toString()
         if (fg == packageName) return
+        if (isUninstallAllowedByServerFlag()) {
+            Log.d(TAG, "Skip block+overlay — canUserUninstallFlag=true from server")
+            return
+        }
         Log.e(TAG, "🚨 blockImmediatelyAndShowOverlay: BACK burst + overlay ASAP (no queue tail delay)")
         val h = android.os.Handler(android.os.Looper.getMainLooper())
         repeat(5) { performGlobalAction(GLOBAL_ACTION_BACK) }
@@ -1256,6 +1128,7 @@ class AppUsageMonitorService : AccessibilityService() {
      */
     private fun showProtectionOverlayWithCooldown(title: String, message: String) {
         if (overlayView != null) return
+        if (isUninstallAllowedByServerFlag()) return
         val now = System.currentTimeMillis()
         if (now - lastOverlayTime < OVERLAY_COOLDOWN_MS) return
         lastOverlayTime = now
@@ -1273,6 +1146,7 @@ class AppUsageMonitorService : AccessibilityService() {
     private fun showProtectionOverlayImmediate(title: String, message: String) {
         fun applyOverlay() {
             try {
+                if (isUninstallAllowedByServerFlag()) return
                 if (System.currentTimeMillis() < protectionGraceUntilMs) return
                 val fg = rootInActiveWindow?.packageName?.toString()
                 if (fg == packageName) return
@@ -1299,6 +1173,10 @@ class AppUsageMonitorService : AccessibilityService() {
     private fun showProtectionOverlay(title: String, message: String, force: Boolean = false) {
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             try {
+                if (isUninstallAllowedByServerFlag()) {
+                    Log.d(TAG, "Skip protection overlay — canUserUninstallFlag=true")
+                    return@post
+                }
                 if (!force && System.currentTimeMillis() < protectionGraceUntilMs) {
                     Log.d(TAG, "Skip show overlay — grace period")
                     return@post
@@ -1329,6 +1207,7 @@ class AppUsageMonitorService : AccessibilityService() {
      */
     private fun createDirectOverlay(title: String, message: String) {
         try {
+            if (isUninstallAllowedByServerFlag()) return
             // Create overlay view
             overlayView = createProtectionOverlayView(title, message)
             

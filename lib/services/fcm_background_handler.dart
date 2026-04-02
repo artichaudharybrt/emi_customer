@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'overlay_lock_service.dart';
 import 'user_location_service.dart';
 import 'sim_details_service.dart';
+import 'uninstall_flag_service.dart';
 
 // Global instance for background handler
 final FlutterLocalNotificationsPlugin _backgroundNotifications = FlutterLocalNotificationsPlugin();
@@ -154,6 +155,15 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
           debugPrint('[FCM] get_sim_details_command (background) result: ${sent ? "OK" : "failed"}');
         } catch (e) {
           debugPrint('[FCM] get_sim_details_command (background) error: $e');
+        }
+        break;
+
+      case 'can_user_uninstall_sync':
+        debugPrint('[FCM] ========== CAN_USER_UNINSTALL_SYNC (background) ==========');
+        try {
+          await UninstallFlagService.applyFromFcmPayload(data);
+        } catch (e) {
+          debugPrint('[FCM] can_user_uninstall_sync error: $e');
         }
         break;
         

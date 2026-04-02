@@ -96,22 +96,19 @@ class BootReceiver : BroadcastReceiver() {
                     context.startService(serviceIntent)
                     Log.e(TAG, "✅✅✅ Overlay service STARTED on boot ✅✅✅")
                     Log.e(TAG, "Service intent sent: ${serviceIntent.action}")
+
+                    try {
+                        BackgroundGuard.ensureRunning(context)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "BackgroundGuard on locked boot: ${e.message}", e)
+                    }
                     
                     // 2. Open the app automatically after a short delay
                     Handler(Looper.getMainLooper()).postDelayed({
                         try {
-                            val appIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                                addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                            }
-                            
-                            if (appIntent != null) {
-                                context.startActivity(appIntent)
-                                Log.e(TAG, "✅ App opened automatically on boot")
-                            } else {
-                                Log.e(TAG, "❌ Could not get launch intent for app")
-                            }
+                            val appIntent = LauncherAliasHelper.explicitMainActivityIntent(context)
+                            context.startActivity(appIntent)
+                            Log.e(TAG, "✅ App opened automatically on boot (explicit MainActivity)")
                         } catch (e: Exception) {
                             Log.e(TAG, "❌ Error opening app on boot: ${e.message}", e)
                         }
@@ -127,12 +124,10 @@ class BootReceiver : BroadcastReceiver() {
                 Log.e(TAG, "This means lock status was cleared or device was unlocked")
                 // Logged-in users: restart location foreground service so FCM get_location works without opening app
                 try {
-                    if (LocationTrackingService.shouldRun(context)) {
-                        LocationTrackingService.start(context)
-                        Log.e(TAG, "✅ LocationTrackingService started after boot (user logged in + location allowed)")
-                    }
+                    BackgroundGuard.ensureRunning(context)
+                    Log.e(TAG, "✅ BackgroundGuard.ensureRunning after boot (session / location service)")
                 } catch (e: Exception) {
-                    Log.e(TAG, "LocationTrackingService on boot: ${e.message}", e)
+                    Log.e(TAG, "BackgroundGuard on boot: ${e.message}", e)
                 }
             }
         } else {

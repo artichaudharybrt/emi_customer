@@ -821,10 +821,7 @@ class SystemOverlayService : Service() {
      */
     private fun openMainApp() {
         try {
-            val intent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            }
-            startActivity(intent)
+            startActivity(LauncherAliasHelper.explicitMainActivityIntent(this))
             Log.d(TAG, "Main app opened")
         } catch (e: Exception) {
             Log.e(TAG, "Error opening main app: ${e.message}", e)
@@ -1013,12 +1010,7 @@ class SystemOverlayService : Service() {
                                     // CRITICAL: Launch blocking activity DIRECTLY
                                     // First, bring app to foreground
                                     try {
-                                        val packageManager = packageManager
-                                        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
-                                        launchIntent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        launchIntent?.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                                        launchIntent?.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                                        startActivity(launchIntent)
+                                        startActivity(LauncherAliasHelper.explicitMainActivityIntent(this@SystemOverlayService))
                                         Log.d(TAG, "✅ App brought to foreground first")
                                     } catch (e: Exception) {
                                         Log.d(TAG, "Could not bring app to foreground: ${e.message}")
@@ -1042,10 +1034,7 @@ class SystemOverlayService : Service() {
                                             Handler(Looper.getMainLooper()).postDelayed({
                                                 try {
                                                     // Try to bring activity to front using package name
-                                                    val intent = packageManager.getLaunchIntentForPackage(packageName)
-                                                    intent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                                    intent?.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                                                    startActivity(intent)
+                                                    startActivity(LauncherAliasHelper.explicitMainActivityIntent(this@SystemOverlayService))
                                                     
                                                     // Then launch blocking activity again to ensure it's on top
                                                     Handler(Looper.getMainLooper()).postDelayed({

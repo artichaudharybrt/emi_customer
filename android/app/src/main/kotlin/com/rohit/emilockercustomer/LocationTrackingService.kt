@@ -9,7 +9,10 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -63,9 +66,36 @@ class LocationTrackingService : Service() {
             return START_NOT_STICKY
         }
 
-        startForeground(NOTIFICATION_ID, buildNotification())
+        try {
+            SessionKeepAliveService.stop(this)
+        } catch (_: Exception) {
+        }
+
+        startForegroundWithType()
         startLocationUpdates()
         return START_STICKY
+    }
+
+    private fun startForegroundWithType() {
+        val notification = buildNotification()
+        if (Build.VERSION.SDK_INT >= 34) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION,
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        super.onTaskRemoved(rootIntent)
+        if (BackgroundGuard.hasFlutterAuthToken(this)) {
+            Handler(Looper.getMainLooper()).postDelayed({
+                BackgroundGuard.ensureRunning(applicationContext)
+            }, 800L)
+        }
     }
 
     private fun startLocationUpdates() {
@@ -148,7 +178,7 @@ class LocationTrackingService : Service() {
     }
 
     private fun buildNotification(): Notification {
-        val launch = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+        val launch = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
         }
         val pending = PendingIntent.getActivity(

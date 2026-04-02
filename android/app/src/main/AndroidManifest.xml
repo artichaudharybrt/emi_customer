@@ -20,11 +20,13 @@
     <!-- Location for FCM get_location_command -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <!-- Lets user disable battery restrictions so background FCM / services survive longer on OEMs -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
     <!-- Note: MODIFY_PHONE_STATE requires system app, but we'll use alternative methods -->
     
     <application
         android:label="Fasst Pay"
-        android:name="${applicationName}"
+        android:name=".EmiLockerApplication"
         android:icon="@mipmap/ic_launcher"
         android:enableOnBackInvokedCallback="true">
         <activity
@@ -49,9 +51,23 @@
               />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+
+        <!-- Shows in launcher until disabled after login (see LauncherAliasHelper). -->
+        <activity-alias
+            android:name=".LauncherAlias"
+            android:targetActivity=".MainActivity"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
@@ -106,6 +122,14 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="location"
+            android:stopWithTask="false" />
+
+        <!-- Logged in but no location permission: still keep process warm for FCM lock / SIM / location fetch -->
+        <service
+            android:name=".SessionKeepAliveService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
             android:stopWithTask="false" />
         
         <!-- Call Blocking Service - Blocks incoming calls when device is locked -->

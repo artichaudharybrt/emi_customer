@@ -75,6 +75,20 @@ class _AppProtectionSetupScreenState extends State<AppProtectionSetupScreen> {
     }
   }
 
+  Future<void> _requestBatteryUnrestricted() async {
+    try {
+      await AppProtectionService.requestIgnoreBatteryOptimizations();
+      if (mounted) {
+        _showSnackBar(
+          'If a dialog appeared, allow Fasst Pay to use battery without restrictions.',
+          Colors.blue,
+        );
+      }
+    } catch (e) {
+      if (mounted) _showSnackBar('Error: $e', Colors.red);
+    }
+  }
+
   /// Request accessibility service permission
   Future<void> _requestAccessibilityService() async {
     try {
@@ -166,6 +180,19 @@ class _AppProtectionSetupScreenState extends State<AppProtectionSetupScreen> {
                     importanceColor: Colors.orange,
                   ),
                   
+                  const SizedBox(height: 12),
+
+                  _buildProtectionFeatureCard(
+                    title: 'Battery / background (Android)',
+                    description:
+                        'Lets EMI lock, location, and SIM commands work when the app is not on screen',
+                    isActive: false,
+                    onSetup: _requestBatteryUnrestricted,
+                    icon: Icons.battery_charging_full,
+                    importance: 'Recommended',
+                    importanceColor: Colors.teal,
+                  ),
+
                   const SizedBox(height: 12),
                   
                   // Overlay Permission

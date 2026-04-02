@@ -1,0 +1,7 @@
+{
+  "private": true,
+  "description": "Local deps for Android provisioning QR generation",
+  "dependencies": {
+    "qrcode": "^1.5.4"
+  }
+}

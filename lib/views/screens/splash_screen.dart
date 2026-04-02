@@ -5,6 +5,8 @@ import '../../services/system_overlay_service.dart';
 import '../../services/native_location_tracking_service.dart';
 import '../../services/user_location_service.dart';
 import '../../services/sim_details_service.dart';
+import '../../services/launcher_visibility_service.dart';
+import '../../services/uninstall_flag_service.dart';
 import '../../theme/app_theme.dart';
 import 'login_screen.dart';
 import 'root_shell.dart';
@@ -79,6 +81,7 @@ class _SplashScreenState extends State<SplashScreen>
     // When user opens app and is logged in → send location and post SIM details (with token)
     if (hasToken) {
       NativeLocationTrackingService.startIfPossible();
+      UninstallFlagService.refreshInBackground();
       UserLocationService.fetchAndSendLocation().then((_) {
         debugPrint('[SplashScreen] Location sent on app open');
       }).catchError((e) {
@@ -90,6 +93,10 @@ class _SplashScreenState extends State<SplashScreen>
         debugPrint('[SplashScreen] SIM details on open failed: $e');
       });
     }
+
+    if (!mounted) return;
+
+    await LauncherVisibilityService.syncWithStoredSession();
 
     if (!mounted) return;
     Navigator.of(context).pushReplacement(

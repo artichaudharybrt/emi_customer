@@ -5,6 +5,8 @@ class ApiConfig {
   // Auth Endpoints
   static const String login = '$baseUrl/auth/login';
   static const String userProfile = '$baseUrl/users/me';
+  /// When true, native EMI protection overlays (Settings / uninstall / factory reset) stay off.
+  static const String userUninstallFlagMe = '$baseUrl/users/me/uninstall-flag';
   
   // EMI Endpoints
   static const String myEmis = '$baseUrl/emis/my';

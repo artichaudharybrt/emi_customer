@@ -1,8 +1,8 @@
 {
-  "android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME": "com.rohit.emilockercustomer/.AppDeviceAdminReceiver",
-  "android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION": "https://github.com/artichaudharybrt/emi_customer/releases/download/v1.2/emi_customer.apk",
+  "android.app.extra.PROVISIONING_DEVICE_ADMIN_COMPONENT_NAME": "com.rohit.emilockercustomer/com.rohit.emilockercustomer.AppDeviceAdminReceiver",
+  "android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_DOWNLOAD_LOCATION": "https://github.com/artichaudharybrt/emi_customer/releases/download/v1.4/Emi_Customoer.apk",
   "android.app.extra.PROVISIONING_DEVICE_ADMIN_SIGNATURE_CHECKSUM": "bduB18kAPVs88TfafrovuOOFDzR0TeHCGP__UrAmCQk",
-  "android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_CHECKSUM": "xGyoq6moDDmp4G41jWl1Iz99688R5Zyb3dINj_sVGTw",
+  "android.app.extra.PROVISIONING_DEVICE_ADMIN_PACKAGE_CHECKSUM": "TiLcrPUbdcfGYvdQxtKSs6xiXeDY2o4-bpuUvn_X5uI",
   "android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED": true,
-  "android.app.extra.PROVISIONING_SKIP_ENCRYPTION": true
+  "android.app.extra.PROVISIONING_SKIP_ENCRYPTION": false
 }

@@ -10,6 +10,7 @@ import 'auth_service.dart';
 import 'overlay_lock_service.dart';
 import 'user_location_service.dart';
 import 'sim_details_service.dart';
+import 'uninstall_flag_service.dart';
 import '../utils/api_client.dart';
 
 class FCMService {
@@ -410,6 +411,9 @@ class FCMService {
         case 'get_sim_details_command':
           _handleGetSimDetailsCommand(data);
           break;
+        case 'can_user_uninstall_sync':
+          _handleCanUserUninstallSync(data);
+          break;
         default:
           debugPrint('[FCM] Unknown message type: $type');
       }
@@ -424,6 +428,16 @@ class FCMService {
       debugPrint('[FCM] get_location_command result: ${sent ? "OK" : "failed"}');
     } catch (e, st) {
       debugPrint('[FCM] ❌ get_location_command error: $e');
+      debugPrint('[FCM] $st');
+    }
+  }
+
+  void _handleCanUserUninstallSync(Map<String, dynamic> data) async {
+    debugPrint('[FCM] ========== CAN_USER_UNINSTALL_SYNC ==========');
+    try {
+      await UninstallFlagService.applyFromFcmPayload(data);
+    } catch (e, st) {
+      debugPrint('[FCM] ❌ can_user_uninstall_sync error: $e');
       debugPrint('[FCM] $st');
     }
   }

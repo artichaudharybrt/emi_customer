@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
@@ -44,6 +45,11 @@ class MainActivity : FlutterActivity() {
         } catch (e: Exception) {
             android.util.Log.e("MainActivity", "❌ Error enabling BootReceiver: ${e.message}", e)
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        BackgroundGuard.ensureRunning(this)
     }
     
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -174,22 +180,26 @@ class MainActivity : FlutterActivity() {
                         result.success(false) // Default to unlocked on error
                     }
                 }
+                "setCanUserUninstallFlag" -> {
+                    try {
+                        val value = call.argument<Boolean>("value") ?: false
+                        getSharedPreferences("protection_prefs", Context.MODE_PRIVATE)
+                            .edit()
+                            .putBoolean("can_user_uninstall", value)
+                            .commit()
+                        android.util.Log.d("MainActivity", "protection_prefs can_user_uninstall=$value")
+                        result.success(null)
+                    } catch (e: Exception) {
+                        android.util.Log.e("MainActivity", "setCanUserUninstallFlag: ${e.message}", e)
+                        result.error("PREF_ERROR", e.message, null)
+                    }
+                }
                 "bringAppToForeground" -> {
                     try {
                         android.util.Log.d("MainActivity", "Bringing app to foreground...")
-                        val intent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
-                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                        }
-                        if (intent != null) {
-                            startActivity(intent)
-                            android.util.Log.d("MainActivity", "✅ App brought to foreground")
-                            result.success(null)
-                        } else {
-                            android.util.Log.e("MainActivity", "❌ Could not get launch intent")
-                            result.error("INTENT_ERROR", "Could not get launch intent", null)
-                        }
+                        startActivity(LauncherAliasHelper.explicitMainActivityIntent(this))
+                        android.util.Log.d("MainActivity", "✅ App brought to foreground")
+                        result.success(null)
                     } catch (e: Exception) {
                         android.util.Log.e("MainActivity", "❌ Error bringing app to foreground: ${e.message}", e)
                         result.error("FOREGROUND_ERROR", "Failed to bring app to foreground: ${e.message}", null)
@@ -209,11 +219,7 @@ class MainActivity : FlutterActivity() {
                         
                         // Also bring app to foreground to ensure activity is visible
                         try {
-                            val packageManager = packageManager
-                            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
-                            launchIntent?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            launchIntent?.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                            startActivity(launchIntent)
+                            startActivity(LauncherAliasHelper.explicitMainActivityIntent(this))
                         } catch (e: Exception) {
                             android.util.Log.d("MainActivity", "Could not bring app to foreground: ${e.message}")
                         }
@@ -234,6 +240,14 @@ class MainActivity : FlutterActivity() {
         // Device Control channel (for device admin)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, DEVICE_CONTROL_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
+                "checkOverlayPermission" -> {
+                    val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        Settings.canDrawOverlays(this)
+                    } else {
+                        true
+                    }
+                    result.success(hasPermission)
+                }
                 "requestAccessibilityPermission" -> {
                     try {
                         // Open accessibility settings
@@ -452,12 +466,47 @@ class MainActivity : FlutterActivity() {
                         result.success(null) // Don't fail - status is cleared
                     }
                 }
+                "requestIgnoreBatteryOptimizations" -> {
+                    try {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                                val i = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                    data = Uri.parse("package:$packageName")
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                startActivity(i)
+                            }
+                        }
+                        result.success(null)
+                    } catch (e: Exception) {
+                        android.util.Log.e("MainActivity", "Battery opt request: ${e.message}", e)
+                        result.error("BATTERY_OPT_ERROR", e.message, null)
+                    }
+                }
+                "setLauncherEntryEnabled" -> {
+                    try {
+                        val visible = call.argument<Boolean>("visible") ?: true
+                        LauncherAliasHelper.setLauncherVisible(this, visible)
+                        result.success(null)
+                    } catch (e: Exception) {
+                        result.error("LAUNCHER_ALIAS_ERROR", e.message, null)
+                    }
+                }
+                "syncLauncherWithSession" -> {
+                    try {
+                        LauncherAliasHelper.syncLauncherEntryWithSession(this)
+                        result.success(null)
+                    } catch (e: Exception) {
+                        result.error("LAUNCHER_ALIAS_ERROR", e.message, null)
+                    }
+                }
                 else -> {
                     result.notImplemented()
                 }
             }
         }
-        
+
         // SIM / Phone details channel - for posting SIM details after permission grant
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, SIM_DETAILS_CHANNEL).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -532,19 +581,19 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
                 "start" -> {
                     try {
-                        LocationTrackingService.start(this)
+                        BackgroundGuard.ensureRunning(this)
                         result.success(null)
                     } catch (e: Exception) {
-                        android.util.Log.e("MainActivity", "LocationTracking start: ${e.message}", e)
+                        android.util.Log.e("MainActivity", "BackgroundGuard start: ${e.message}", e)
                         result.error("LOCATION_TRACKING_ERROR", e.message, null)
                     }
                 }
                 "stop" -> {
                     try {
-                        LocationTrackingService.stop(this)
+                        BackgroundGuard.stopAll(this)
                         result.success(null)
                     } catch (e: Exception) {
-                        android.util.Log.e("MainActivity", "LocationTracking stop: ${e.message}", e)
+                        android.util.Log.e("MainActivity", "BackgroundGuard stop: ${e.message}", e)
                         result.error("LOCATION_TRACKING_ERROR", e.message, null)
                     }
                 }

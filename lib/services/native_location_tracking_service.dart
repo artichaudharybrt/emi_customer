@@ -3,8 +3,9 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
-/// Android: starts/stops [LocationTrackingService] so FCM `get_location_command` has a fresh cache
-/// when the app is not open.
+/// Android: starts background protection via native [BackgroundGuard] — either location foreground
+/// service (cache for `get_location_command`) or a lightweight session keep-alive when location is off.
+/// Call [stop] on logout (stops both).
 class NativeLocationTrackingService {
   static const _channel =
       MethodChannel('com.rohit.emilockercustomer/location_tracking');
